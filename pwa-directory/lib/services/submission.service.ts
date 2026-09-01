@@ -1,5 +1,4 @@
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { adminAuth, adminDb, FieldValue } from "@/lib/firebase-admin";
 import { PwaSubmissionSchema } from "@/lib/validators/pwa.validator";
 import { verifyPwaUrl, type PwaVerificationResult } from "@/lib/services/pwa-verifier.service";
 import type { UserRole } from "@/types";

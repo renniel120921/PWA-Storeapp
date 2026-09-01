@@ -1,6 +1,5 @@
 import "server-only";
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { adminAuth, adminDb, FieldValue } from "@/lib/firebase-admin";
 import type { UserRole } from "@/types";
 
 export class AdminActionError extends Error {

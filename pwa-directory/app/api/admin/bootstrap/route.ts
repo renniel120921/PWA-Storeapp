@@ -1,8 +1,12 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { adminAuth, adminDb, getAdminCredentialStatus } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import {
+  adminAuth,
+  adminDb,
+  getAdminCredentialStatus,
+  FieldValue,
+} from "@/lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

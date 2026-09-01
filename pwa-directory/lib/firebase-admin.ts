@@ -8,7 +8,7 @@ import {
   type AppOptions,
 } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getStorage, type Storage } from "firebase-admin/storage";
 
 function cleanPrivateKey(key: string): string {
@@ -43,7 +43,6 @@ function parseServiceAccountJson(raw: string): Record<string, unknown> | null {
     }
   } catch {
     try {
-      // Support base64-encoded service account key strings
       const decoded = Buffer.from(cleaned, "base64").toString("utf-8");
       const parsed = JSON.parse(decoded);
       if (parsed && typeof parsed === "object") {
@@ -167,4 +166,4 @@ if (!getApps().length) {
 export const adminAuth: Auth = getAuth(adminApp);
 export const adminDb: Firestore = getFirestore(adminApp);
 export const adminStorage: Storage = getStorage(adminApp);
-export { adminApp };
+export { FieldValue, adminApp };
