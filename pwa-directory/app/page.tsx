@@ -409,7 +409,7 @@ export default function Home() {
                     </span>
                   )}
                   <Link
-                    href="/dashboard"
+                    href={isAdmin ? "/admin" : "/dashboard"}
                     className="flex items-center gap-2 pl-2 pr-3 py-1 rounded-full bg-(--card) border border-(--line) text-xs font-mono text-(--ink) hover:border-(--ink)/40 transition-colors"
                   >
                     <span className="w-5 h-5 rounded-full bg-(--ink) text-(--paper) flex items-center justify-center text-[10px] font-sans font-bold uppercase">
@@ -502,7 +502,7 @@ export default function Home() {
                   <>
                     <div className="flex items-center justify-between py-1">
                       <Link
-                        href="/dashboard"
+                        href={isAdmin ? "/admin" : "/dashboard"}
                         onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
                       >
@@ -515,10 +515,10 @@ export default function Home() {
                         </span>
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-(--ink) leading-tight">
-                            {profile?.fullName || user?.displayName || "Developer"}
+                            {profile?.fullName || user?.displayName || (isAdmin ? "Administrator" : "Developer")}
                           </span>
                           <span className="text-[11px] font-mono text-(--body-dim)">
-                            {isAdmin ? "Administrator (View Dashboard)" : "View Developer Dashboard"}
+                            {isAdmin ? "Admin Moderation Portal" : "Developer Dashboard"}
                           </span>
                         </div>
                       </Link>

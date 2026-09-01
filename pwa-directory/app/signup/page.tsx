@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   createUserWithEmailAndPassword,
   updateProfile,
+  signOut,
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
@@ -298,16 +299,19 @@ export default function Signup() {
         createdAt: serverTimestamp(),
       });
 
+      // Explicitly sign out so user performs manual first login
+      await signOut(auth);
+
       clearAttempts();
 
       await notify({
         icon: "success",
-        title: "Welcome to Likha Apps",
-        text: "Your developer account has been created.",
+        title: "Account created successfully!",
+        text: "Your developer account is ready. Please log in to continue.",
       });
 
-      // 4. Redirect back to home (or dashboard)
-      router.push("/");
+      // 4. Redirect to login
+      router.push("/login");
     } catch (err: unknown) {
       console.error("Signup error:", err);
       notify({

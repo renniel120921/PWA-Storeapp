@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
 } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import Swal from "sweetalert2";
 import type { SweetAlertOptions } from "sweetalert2";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +109,7 @@ function getLoginErrorMessage(err: unknown): string {
 
 export default function Login() {
   const router = useRouter();
+  const { user, isAdmin, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -122,6 +125,17 @@ export default function Login() {
     if (typeof window === "undefined") return false;
     return getRecentAttempts().length >= RATE_LIMIT_MAX;
   });
+
+  // If already authenticated and profile hydrated, route to appropriate portal directly
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (isAdmin) {
+        router.push("/admin");
+      } else {
+        router.push("/dashboard");
+      }
+    }
+  }, [authLoading, user, isAdmin, router]);
 
   const canSubmit = useMemo(
     () => formData.email.trim() !== "" && formData.password !== "",
@@ -197,9 +211,59 @@ export default function Login() {
 
     try {
       const email = formData.email.trim().toLowerCase();
-      await signInWithEmailAndPassword(auth, email, formData.password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        formData.password
+      );
       clearAttempts();
-      router.push("/");
+
+      // Read trusted Firestore user profile directly to ensure zero race condition
+      let role = "developer";
+      let fullName = "";
+      try {
+        const userDocRef = doc(db, "users", userCredential.user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          role = data.role === "admin" ? "admin" : "developer";
+          fullName = data.fullName || data.firstName || "";
+        }
+      } catch (profileErr) {
+        console.warn(
+          "Could not read user profile role directly on login, using fallback:",
+          profileErr
+        );
+      }
+
+      // CRITICAL ROLE PRIORITY: Admin MUST take precedence
+      if (role === "admin") {
+        await Swal.fire({
+          icon: "success",
+          title: "Welcome back, Administrator!",
+          text: "Redirecting to your Admin Moderation Portal...",
+          timer: 1400,
+          timerProgressBar: true,
+          showConfirmButton: false,
+          background: CARD,
+          color: INK,
+          customClass: { popup: "rounded-xl" },
+        });
+        router.push("/admin");
+      } else {
+        await Swal.fire({
+          icon: "success",
+          title: fullName ? `Welcome back, ${fullName}!` : "Welcome back!",
+          text: "Redirecting to your Developer Portal...",
+          timer: 1400,
+          timerProgressBar: true,
+          showConfirmButton: false,
+          background: CARD,
+          color: INK,
+          customClass: { popup: "rounded-xl" },
+        });
+        router.push("/dashboard");
+      }
     } catch (err: unknown) {
       console.error("Login error:", err);
       notify({
