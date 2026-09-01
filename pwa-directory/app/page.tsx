@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getApprovedPwas } from "@/lib/services/pwa.service";
 import { useAuth } from "@/hooks/useAuth";
+import { useHydrated } from "@/hooks/useHydrated";
 import { useDebounce } from "@/hooks/useDebounce";
 import { SearchBar } from "@/components/directory/SearchBar";
 import { CategoryFilter } from "@/components/directory/CategoryFilter";
@@ -147,6 +148,7 @@ export default function Home() {
 
   const [apps, setApps] = useState<Pwa[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasMounted = useHydrated();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
@@ -398,7 +400,7 @@ export default function Home() {
 
             {/* Desktop Auth & Actions */}
             <div className="hidden md:flex items-center gap-3">
-              {authLoading ? (
+              {!hasMounted || authLoading ? (
                 <div className="w-24 h-9 rounded-md bg-(--ink)/5 animate-pulse" />
               ) : isAuthenticated ? (
                 <>
@@ -496,7 +498,7 @@ export default function Home() {
               </button>
 
               <div className="pt-2 border-t border-(--line) flex flex-col gap-3">
-                {authLoading ? (
+                {!hasMounted || authLoading ? (
                   <div className="w-full h-12 rounded-md bg-(--ink)/5 animate-pulse" />
                 ) : isAuthenticated ? (
                   <>
@@ -711,12 +713,14 @@ export default function Home() {
                 <h2 className="font-display text-3xl md:text-4xl font-medium text-(--ink) mb-2 tracking-tight">
                   The directory
                 </h2>
-                <p className="text-(--body) text-lg">
+                <p className="text-(--body) text-base sm:text-lg">
                   {loading
-                    ? "Loading catalog..."
+                    ? "Loading marketplace catalog..."
                     : apps.length > 0
-                    ? `${filteredApps.length} of ${apps.length} app${apps.length === 1 ? "" : "s"} listed.`
-                    : "Apps built by the community."}
+                    ? debouncedSearch || selectedCategory !== "all"
+                      ? `Showing ${filteredApps.length} of ${apps.length} app${apps.length === 1 ? "" : "s"}.`
+                      : `Browse ${apps.length} verified progressive web app${apps.length === 1 ? "" : "s"} ready to use in your browser.`
+                    : "Discover installable web applications built by the community."}
                 </p>
               </div>
             </Reveal>

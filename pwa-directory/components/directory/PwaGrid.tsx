@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LayoutGrid, SearchX } from "lucide-react";
+import { LayoutGrid, SearchX, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PwaCard } from "./PwaCard";
 import type { Pwa } from "@/types";
@@ -26,21 +26,25 @@ export function PwaGrid({
   // 1. Loading Skeleton
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
         {[1, 2, 3, 4, 5, 6].map((i) => (
           <div
             key={i}
-            className="h-[230px] rounded-lg bg-(--card) border border-(--line) p-7 flex flex-col justify-between animate-pulse"
+            className="h-[210px] rounded-2xl bg-(--card) border border-(--line) p-6 flex flex-col justify-between animate-pulse"
           >
-            <div className="flex justify-between items-start">
-              <div className="h-6 w-32 bg-(--ink)/10 rounded" />
-              <div className="h-5 w-16 bg-(--ink)/10 rounded" />
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-(--ink)/10 shrink-0" />
+              <div className="space-y-2 flex-1">
+                <div className="h-5 w-3/4 bg-(--ink)/10 rounded" />
+                <div className="h-3 w-1/2 bg-(--ink)/5 rounded" />
+                <div className="h-3 w-1/4 bg-(--ink)/5 rounded" />
+              </div>
             </div>
-            <div className="space-y-2">
-              <div className="h-4 w-full bg-(--ink)/5 rounded" />
-              <div className="h-4 w-3/4 bg-(--ink)/5 rounded" />
+            <div className="space-y-1.5 my-3">
+              <div className="h-3 w-full bg-(--ink)/5 rounded" />
+              <div className="h-3 w-2/3 bg-(--ink)/5 rounded" />
             </div>
-            <div className="h-4 w-1/2 bg-(--ink)/10 rounded pt-4 border-t border-(--line)" />
+            <div className="h-8 w-full bg-(--ink)/5 rounded pt-3 border-t border-(--line)" />
           </div>
         ))}
       </div>
@@ -52,20 +56,25 @@ export function PwaGrid({
 
   if (apps.length === 0 && hasActiveFilters) {
     return (
-      <div className="py-20 text-center border-2 border-dashed border-(--line) rounded-lg bg-(--card) px-6">
-        <SearchX className="mx-auto h-10 w-10 text-(--body-dim) mb-4" />
-        <h3 className="text-xl font-semibold text-(--ink) font-display mb-2">
+      <div className="py-16 text-center border-2 border-dashed border-(--line) rounded-2xl bg-(--card) px-6 max-w-xl mx-auto shadow-xs">
+        <div className="w-14 h-14 rounded-full bg-(--ink)/5 flex items-center justify-center mx-auto mb-4 text-(--body-dim)">
+          <SearchX className="h-7 w-7" />
+        </div>
+        <h3 className="text-xl font-semibold text-(--ink) font-display mb-1.5">
           No matching apps found
         </h3>
-        <p className="text-sm text-(--body) max-w-md mx-auto mb-6 leading-relaxed">
-          We couldn&apos;t find any progressive web apps matching your current search or category filter.
+        <p className="text-xs sm:text-sm text-(--body) max-w-sm mx-auto mb-6 leading-relaxed">
+          {searchQuery
+            ? `We couldn't find any apps matching "${searchQuery}". Try a different keyword or category.`
+            : `No apps currently listed under this category.`}
         </p>
         <Button
           onClick={onClearFilters}
           variant="outline"
-          className="border-(--ink)/25 text-(--ink) bg-transparent hover:bg-(--ink-soft) h-10 px-5 text-sm font-medium"
+          className="border-(--line) text-(--ink) bg-transparent hover:bg-(--ink-soft) h-10 px-5 text-xs font-mono font-medium inline-flex items-center gap-2 cursor-pointer"
         >
-          Reset filters
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Reset all filters</span>
         </Button>
       </div>
     );
@@ -74,20 +83,22 @@ export function PwaGrid({
   // 3. Absolute Empty Directory
   if (apps.length === 0) {
     return (
-      <div className="py-24 text-center border-2 border-dashed border-(--line) rounded-lg bg-(--card) px-6">
-        <LayoutGrid className="mx-auto h-10 w-10 text-(--body-dim) mb-5" />
-        <h3 className="text-xl font-semibold text-(--ink) font-display mb-2">
-          The shelf is empty
+      <div className="py-20 text-center border-2 border-dashed border-(--line) rounded-2xl bg-(--card) px-6 max-w-xl mx-auto shadow-xs">
+        <div className="w-14 h-14 rounded-full bg-(--ink)/5 flex items-center justify-center mx-auto mb-4 text-(--body-dim)">
+          <LayoutGrid className="h-7 w-7" />
+        </div>
+        <h3 className="text-xl font-semibold text-(--ink) font-display mb-1.5">
+          No apps published yet
         </h3>
-        <p className="text-base text-(--body) mb-8">
-          Be the first entry in the catalog.
+        <p className="text-xs sm:text-sm text-(--body) mb-6 max-w-sm mx-auto leading-relaxed">
+          Great progressive web apps will appear here as developers publish them to the community directory.
         </p>
         <Button
           onClick={onOpenSubmit}
-          variant="outline"
-          className="border-(--ink)/25 text-(--ink) bg-transparent hover:bg-(--ink-soft) h-12 px-6"
+          className="bg-(--coral) hover:bg-[#e85a3e] text-white h-11 px-6 text-xs font-medium rounded-md shadow-none inline-flex items-center gap-2 cursor-pointer"
         >
-          Submit now
+          <Plus className="w-4 h-4" />
+          <span>Submit Your App</span>
         </Button>
       </div>
     );
@@ -95,11 +106,10 @@ export function PwaGrid({
 
   // 4. Grid of Cards
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
       {apps.map((app) => (
         <PwaCard key={app.id || app.slug} app={app} />
       ))}
     </div>
   );
 }
-

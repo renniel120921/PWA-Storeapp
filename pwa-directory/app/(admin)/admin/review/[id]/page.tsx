@@ -22,6 +22,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import {
+  showConfirmDialog,
+  showSuccessAlert,
+  showErrorAlert,
+  showLoadingAlert,
+} from "@/lib/utils/swal";
 
 interface ReviewInspectorProps {
   params: Promise<{ id: string }>;
@@ -94,13 +100,23 @@ export default function AdminSubmissionInspectorPage({
 
   const handleApprove = async () => {
     if (!user || submitting) return;
-    const confirmed = window.confirm(
-      `Approve "${submission?.title}" and publish to the live Likha Apps marketplace?`
-    );
+
+    const confirmed = await showConfirmDialog({
+      title: "Approve this application?",
+      text: `"${submission?.title}" will become publicly visible in the Likha Apps directory.`,
+      confirmText: "Approve App",
+      cancelText: "Cancel",
+      icon: "question",
+    });
+
     if (!confirmed) return;
 
     setSubmitting(true);
     setActionError(null);
+    showLoadingAlert({
+      title: "Publishing Application...",
+      text: "Creating live directory listing and updating review status.",
+    });
 
     try {
       const idToken = await user.getIdToken();
@@ -117,11 +133,26 @@ export default function AdminSubmissionInspectorPage({
           message: "Application approved successfully and published to the live directory.",
         });
         setSubmission((prev) => (prev ? { ...prev, status: "approved" } : null));
+        await showSuccessAlert({
+          title: "Application Approved!",
+          text: `"${submission?.title}" is now live in the Likha Apps directory.`,
+          timer: 2000,
+        });
       } else {
         setActionError(res.error || "Failed to approve application.");
+        await showErrorAlert({
+          title: "Approval Failed",
+          error: res.error || "Failed to approve application.",
+        });
       }
-    } catch {
-      setActionError("An unexpected error occurred while approving application.");
+    } catch (err) {
+      const msg = "An unexpected error occurred while approving application.";
+      setActionError(msg);
+      await showErrorAlert({
+        title: "Approval Error",
+        error: err,
+        text: msg,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -131,20 +162,28 @@ export default function AdminSubmissionInspectorPage({
     e.preventDefault();
     if (!user || submitting) return;
 
-    if (!rejectReason.trim() || rejectReason.trim().length < 5) {
-      setActionError("Please provide a rejection reason with at least 5 characters.");
+    const trimmedReason = rejectReason.trim();
+    if (!trimmedReason || trimmedReason.length < 5) {
+      await showErrorAlert({
+        title: "Rejection Reason Required",
+        text: "Please provide a detailed rejection reason of at least 5 characters.",
+      });
       return;
     }
 
     setSubmitting(true);
     setActionError(null);
+    showLoadingAlert({
+      title: "Rejecting Submission...",
+      text: "Recording review feedback and updating status.",
+    });
 
     try {
       const idToken = await user.getIdToken();
       const res = await executeReviewAction({
         submissionId: id,
         action: "reject",
-        reason: rejectReason.trim(),
+        reason: trimmedReason,
         idToken,
       });
 
@@ -158,16 +197,31 @@ export default function AdminSubmissionInspectorPage({
             ? {
                 ...prev,
                 status: "rejected",
-                rejectionReason: rejectReason.trim(),
+                rejectionReason: trimmedReason,
               }
             : null
         );
         setRejectModalOpen(false);
+        await showSuccessAlert({
+          title: "Submission Rejected",
+          text: "The developer has been notified and can address the review issues.",
+          timer: 2000,
+        });
       } else {
         setActionError(res.error || "Failed to reject submission.");
+        await showErrorAlert({
+          title: "Rejection Failed",
+          error: res.error || "Failed to reject submission.",
+        });
       }
-    } catch {
-      setActionError("An unexpected error occurred while rejecting submission.");
+    } catch (err) {
+      const msg = "An unexpected error occurred while rejecting submission.";
+      setActionError(msg);
+      await showErrorAlert({
+        title: "Rejection Error",
+        error: err,
+        text: msg,
+      });
     } finally {
       setSubmitting(false);
     }

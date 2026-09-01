@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PwaCard } from "@/components/directory/PwaCard";
+import { RatingSection } from "@/components/reviews/RatingSection";
+import { StarRating } from "@/components/reviews/StarRating";
 import { getPwaBySlug, getPwasByCategory } from "@/lib/services/pwa.service";
 
 export const dynamic = "force-dynamic";
@@ -138,6 +140,13 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                     <ShieldCheck className="w-3.5 h-3.5" />
                     Verified PWA
                   </span>
+                  {pwa.ratingCount > 0 && pwa.ratingAverage > 0 && (
+                    <span className="flex items-center gap-1 font-mono text-xs text-(--ink) bg-(--ink-soft) px-2 py-0.5 rounded border border-(--line)">
+                      <StarRating value={pwa.ratingAverage} readOnly size="sm" />
+                      <span className="font-semibold">{pwa.ratingAverage.toFixed(1)}</span>
+                      <span className="text-(--body-dim)">({pwa.ratingCount})</span>
+                    </span>
+                  )}
                 </div>
 
                 <h1 className="font-display text-3xl sm:text-4xl font-medium text-(--ink) tracking-tight mb-2">
@@ -196,6 +205,14 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                 {pwa.description || "No full description provided for this application."}
               </div>
             </section>
+
+            {/* Ratings & Reviews Section */}
+            <RatingSection
+              pwaSlug={slug}
+              appTitle={pwa.title}
+              initialAverage={pwa.ratingAverage || 0}
+              initialCount={pwa.ratingCount || 0}
+            />
 
             {/* Screenshots Gallery (If available) */}
             {pwa.screenshots && pwa.screenshots.length > 0 && (
@@ -348,13 +365,12 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
           </div>
         </div>
 
-        {/* Related Apps Section */}
         {relatedApps.length > 0 && (
           <div className="mt-16 pt-12 border-t border-(--line)">
-            <h2 className="font-display text-2xl font-medium text-(--ink) mb-8 tracking-tight">
+            <h2 className="font-display text-2xl font-medium text-(--ink) mb-6 tracking-tight">
               More in {displayCategory}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
               {relatedApps.map((item) => (
                 <PwaCard key={item.id || item.slug} app={item} />
               ))}

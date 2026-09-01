@@ -94,7 +94,7 @@ export const PwaSubmissionSchema = z.object({
 export type PwaSubmissionInput = z.infer<typeof PwaSubmissionSchema>;
 
 /**
- * Review / Rating Schema (Phase 2).
+ * Review / Rating Schema.
  */
 export const ReviewSchema = z.object({
   pwaId: z.string().min(1, "Target PWA is required"),
@@ -102,8 +102,9 @@ export const ReviewSchema = z.object({
   comment: z
     .string()
     .trim()
-    .min(5, "Review comment must be at least 5 characters")
-    .max(1000, "Review comment cannot exceed 1000 characters"),
+    .max(1000, "Review comment cannot exceed 1000 characters")
+    .optional()
+    .default(""),
 });
 
 export type ReviewInput = z.infer<typeof ReviewSchema>;

@@ -82,6 +82,8 @@ service cloud.firestore {
         && request.resource.data.status == resource.data.status
         && (!('viewsCount' in request.resource.data) || request.resource.data.viewsCount == resource.data.viewsCount)
         && (!('clicksCount' in request.resource.data) || request.resource.data.clicksCount == resource.data.clicksCount)
+        && (!('ratingAverage' in request.resource.data) || request.resource.data.ratingAverage == resource.data.ratingAverage)
+        && (!('ratingCount' in request.resource.data) || request.resource.data.ratingCount == resource.data.ratingCount)
       );
 
       // Deletions: Owner or Admin
@@ -136,42 +138,18 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 5. Reviews Collection (/reviews/{reviewId}) [Phase 2 Ready]
+    // 5. Reviews Collection (/reviews/{reviewId})
     // =========================================================================
     match /reviews/{reviewId} {
-      // Public can read published reviews
+      // Public can read published reviews; Admins and authors can read their own
       allow read: if resource.data.status == "published"
         || isAdmin()
         || (isAuthenticated() && resource.data.userId == request.auth.uid);
 
-      // Create:
-      // - Must be authenticated
-      // - userId must match auth.uid
-      // - Doc ID must follow compound pattern {userId}_{pwaId} to enforce 1 review per app
-      // - Rating must be between 1 and 5
-      // - Target PWA must exist and have status == 'approved'
-      allow create: if isAuthenticated()
-        && request.resource.data.userId == request.auth.uid
-        && reviewId == request.auth.uid + "_" + request.resource.data.pwaId
-        && request.resource.data.rating is int
-        && request.resource.data.rating >= 1
-        && request.resource.data.rating <= 5
-        && request.resource.data.status == "published"
-        && exists(/databases/$(database)/documents/pwas/$(request.resource.data.pwaId))
-        && get(/databases/$(database)/documents/pwas/$(request.resource.data.pwaId)).data.status == "approved";
-
-      // Update: Author can update rating and comment, but cannot change userId or pwaId
-      allow update: if (isAuthenticated()
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.pwaId == resource.data.pwaId
-        && request.resource.data.rating is int
-        && request.resource.data.rating >= 1
-        && request.resource.data.rating <= 5)
-        || isAdmin();
-
-      // Delete: Review author or Admin
-      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      // Direct client writes are blocked.
+      // All review creations, updates, and aggregate calculations are performed
+      // exclusively via server-side API (/api/reviews) using the Firebase Admin SDK.
+      allow create, update, delete: if false;
     }
 
     // =========================================================================

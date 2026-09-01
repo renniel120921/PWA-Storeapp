@@ -25,6 +25,7 @@ import { PwaPreviewCard } from "@/components/submission/PwaPreviewCard";
 import { DIRECTORY_CATEGORIES } from "@/lib/constants/categories";
 import { PwaSubmissionSchema } from "@/lib/validators/pwa.validator";
 import type { PwaVerificationResult } from "@/lib/services/pwa-verifier.service";
+import { showSuccessAlert, showErrorAlert } from "@/lib/utils/swal";
 
 const WIZARD_STEPS = [
   { id: 1, label: "App URL" },
@@ -282,15 +283,31 @@ export default function SubmitPage() {
       const result = await res.json();
 
       if (!res.ok || !result.ok) {
-        setSubmitError(result.error || "Server rejected submission promotion.");
+        const errorMsg = result.error || "Server rejected submission promotion.";
+        setSubmitError(errorMsg);
+        await showErrorAlert({
+          title: "Submission Error",
+          error: errorMsg,
+        });
         setIsSubmitting(false);
         return;
       }
 
       setSubmittedId(submissionId);
       setCurrentStep(6);
-    } catch {
-      setSubmitError("Failed to submit application. Please check your network connection.");
+      await showSuccessAlert({
+        title: "Sent for Review!",
+        text: `"${formData.title}" has been submitted to the moderation queue.`,
+        timer: 2000,
+      });
+    } catch (err) {
+      const msg = "Failed to submit application. Please check your network connection.";
+      setSubmitError(msg);
+      await showErrorAlert({
+        title: "Network Error",
+        error: err,
+        text: msg,
+      });
     } finally {
       setIsSubmitting(false);
     }

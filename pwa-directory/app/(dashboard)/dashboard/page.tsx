@@ -32,7 +32,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { PwaStatus } from "@/types";
-import Swal from "sweetalert2";
+import {
+  showConfirmDialog,
+  showSuccessAlert,
+  showErrorAlert,
+  showInfoAlert,
+  showLoadingAlert,
+} from "@/lib/utils/swal";
 
 export default function DeveloperDashboardPage() {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -110,45 +116,41 @@ export default function DeveloperDashboardPage() {
   const handleDeleteDraft = async (submissionId: string, title: string) => {
     if (!user?.uid || actionLoadingId) return;
 
-    const result = await Swal.fire({
+    const confirmed = await showConfirmDialog({
       title: "Delete this draft?",
       text: `Are you sure you want to delete the draft for "${title}"? This cannot be undone.`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Delete Draft",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#e11d48",
-      customClass: { popup: "rounded-xl" },
+      confirmText: "Delete Draft",
+      cancelText: "Cancel",
+      isDestructive: true,
     });
 
-    if (!result.isConfirmed) return;
+    if (!confirmed) return;
 
     setActionLoadingId(submissionId);
+    showLoadingAlert({
+      title: "Deleting Draft...",
+      text: "Removing draft submission.",
+    });
+
     try {
       const res = await deleteDraftSubmission(submissionId, user.uid);
       if (res.ok) {
         setItems((prev) => prev.filter((i) => i.id !== submissionId));
-        await Swal.fire({
-          icon: "success",
+        await showSuccessAlert({
           title: "Draft deleted",
+          text: `"${title}" has been removed.`,
           timer: 1500,
-          showConfirmButton: false,
-          customClass: { popup: "rounded-xl" },
         });
       } else {
-        await Swal.fire({
-          icon: "error",
+        await showErrorAlert({
           title: "Action failed",
           text: res.error || "Could not delete draft.",
-          customClass: { popup: "rounded-xl" },
         });
       }
-    } catch {
-      await Swal.fire({
-        icon: "error",
+    } catch (err) {
+      await showErrorAlert({
         title: "Error",
-        text: "An unexpected network error occurred.",
-        customClass: { popup: "rounded-xl" },
+        error: err,
       });
     } finally {
       setActionLoadingId(null);
@@ -159,46 +161,41 @@ export default function DeveloperDashboardPage() {
   const handleCancelPending = async (submissionId: string, title: string) => {
     if (!user?.uid || actionLoadingId) return;
 
-    const result = await Swal.fire({
+    const confirmed = await showConfirmDialog({
       title: "Cancel submission?",
       text: `Withdraw "${title}" from the moderation queue?`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Cancel Submission",
-      cancelButtonText: "Keep in Queue",
-      confirmButtonColor: "#e11d48",
-      customClass: { popup: "rounded-xl" },
+      confirmText: "Cancel Submission",
+      cancelText: "Keep in Queue",
+      isDestructive: true,
     });
 
-    if (!result.isConfirmed) return;
+    if (!confirmed) return;
 
     setActionLoadingId(submissionId);
+    showLoadingAlert({
+      title: "Cancelling Submission...",
+      text: "Withdrawing submission from moderation queue.",
+    });
+
     try {
       const res = await cancelPendingSubmission(submissionId, user.uid);
       if (res.ok) {
         setItems((prev) => prev.filter((i) => i.id !== submissionId));
-        await Swal.fire({
-          icon: "info",
+        await showSuccessAlert({
           title: "Submission cancelled",
-          text: "Your submission has been withdrawn from the review queue.",
+          text: `"${title}" has been withdrawn from the review queue.`,
           timer: 1800,
-          showConfirmButton: false,
-          customClass: { popup: "rounded-xl" },
         });
       } else {
-        await Swal.fire({
-          icon: "error",
+        await showErrorAlert({
           title: "Action failed",
           text: res.error || "Could not cancel submission.",
-          customClass: { popup: "rounded-xl" },
         });
       }
-    } catch {
-      await Swal.fire({
-        icon: "error",
+    } catch (err) {
+      await showErrorAlert({
         title: "Error",
-        text: "An unexpected network error occurred.",
-        customClass: { popup: "rounded-xl" },
+        error: err,
       });
     } finally {
       setActionLoadingId(null);
@@ -209,48 +206,43 @@ export default function DeveloperDashboardPage() {
   const handleRemoveListing = async (slug: string, title: string) => {
     if (!user || actionLoadingId) return;
 
-    const result = await Swal.fire({
+    const confirmed = await showConfirmDialog({
       title: "Remove this listing?",
-      text: "The app will no longer be publicly listed. Your submission history will remain available.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Remove Listing",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#e11d48",
-      customClass: { popup: "rounded-xl" },
+      text: "This app will no longer appear in the public directory. Your submission history will remain available.",
+      confirmText: "Remove Listing",
+      cancelText: "Cancel",
+      isDestructive: true,
     });
 
-    if (!result.isConfirmed) return;
+    if (!confirmed) return;
 
     setActionLoadingId(slug);
+    showLoadingAlert({
+      title: "Unpublishing Listing...",
+      text: "Removing app from the live marketplace.",
+    });
+
     try {
       const idToken = await user.getIdToken();
       const res = await removeApprovedPwaListing({ slug, idToken });
 
       if (res.ok) {
-        await Swal.fire({
-          icon: "success",
+        await showSuccessAlert({
           title: "Listing removed",
           text: `"${title}" has been unlisted from the public directory.`,
           timer: 2000,
-          showConfirmButton: false,
-          customClass: { popup: "rounded-xl" },
         });
         setRefreshKey((k) => k + 1);
       } else {
-        await Swal.fire({
-          icon: "error",
+        await showErrorAlert({
           title: "Action failed",
           text: res.error || "Could not remove listing.",
-          customClass: { popup: "rounded-xl" },
         });
       }
-    } catch {
-      await Swal.fire({
-        icon: "error",
+    } catch (err) {
+      await showErrorAlert({
         title: "Error",
-        text: "An unexpected network error occurred.",
-        customClass: { popup: "rounded-xl" },
+        error: err,
       });
     } finally {
       setActionLoadingId(null);
@@ -259,12 +251,9 @@ export default function DeveloperDashboardPage() {
 
   // View Rejection Reason Modal
   const handleViewRejectionReason = (title: string, reason?: string) => {
-    Swal.fire({
+    showInfoAlert({
       title: `Moderation Feedback: ${title}`,
       text: reason || "No detailed moderation notes were provided.",
-      icon: "info",
-      confirmButtonText: "Close",
-      customClass: { popup: "rounded-xl" },
     });
   };
 
