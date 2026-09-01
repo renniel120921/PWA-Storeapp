@@ -128,18 +128,32 @@ function recordAttempt() {
   }
 }
 
+function clearAttempts() {
+  try {
+    localStorage.removeItem(RATE_LIMIT_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function getSignupErrorMessage(err: unknown): string {
   if (err instanceof FirebaseError) {
-    if (err.code === "auth/email-already-in-use") {
-      return "An account with this email already exists.";
+    switch (err.code) {
+      case "auth/email-already-in-use":
+        return "An account with this email already exists. Please log in instead.";
+      case "auth/weak-password":
+        return "That password is too weak. Please choose a stronger password.";
+      case "auth/invalid-email":
+        return "That email address doesn't look valid.";
+      case "auth/operation-not-allowed":
+        return "Email/Password sign-in is not enabled in Firebase Console. Please contact support.";
+      case "auth/network-request-failed":
+        return "Network request failed. Please check your internet connection and try again.";
+      case "permission-denied":
+        return "Account created in Authentication, but profile initialization failed. Please try logging in.";
+      default:
+        return err.message;
     }
-    if (err.code === "auth/weak-password") {
-      return "That password is too weak. Try a stronger one.";
-    }
-    if (err.code === "auth/invalid-email") {
-      return "That email address doesn't look valid.";
-    }
-    return err.message;
   }
   if (err instanceof Error) {
     return err.message;
@@ -273,8 +287,9 @@ export default function Signup() {
       // 2. Attach a display name to the auth profile
       await updateProfile(user, { displayName: fullName });
 
-      // 3. Save normalized details in Firestore
+      // 3. Save normalized details in Firestore matching firestore.rules
       await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
         firstName,
         middleName,
         lastName,
@@ -284,6 +299,8 @@ export default function Signup() {
         role: "developer",
         createdAt: serverTimestamp(),
       });
+
+      clearAttempts();
 
       await notify({
         icon: "success",
