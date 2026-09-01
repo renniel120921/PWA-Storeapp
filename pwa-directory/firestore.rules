@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // Reusable Rule Helper Functions
+    // =========================================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Check if the authenticated user's UID matches the given userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if the user document in Firestore has the 'admin' role
+    function isAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // Validate allowed user roles
+    function isValidUserRole(role) {
+      return role == "developer" || role == "admin";
+    }
+
+    // Validate allowed PWA status values
+    function isValidPwaStatus(status) {
+      return status in ["draft", "pending", "approved", "rejected", "suspended"];
+    }
+
+    // =========================================================================
+    // 1. Users Collection (/users/{userId})
+    // =========================================================================
+    match /users/{userId} {
+      // User Privacy: Only the owner or an admin may read private profile data
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Creation: User can only create their own document with role 'developer'
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.role == "developer"
+        && request.resource.data.email is string;
+
+      // Update: User can update profile details, but CANNOT modify uid, email, or role
+      allow update: if (isOwner(userId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role)
+        || isAdmin();
+
+      // Deletion: Admin only
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. PWAs Collection (/pwas/{slug})
+    // =========================================================================
+    match /pwas/{slug} {
+      // Public read allowed ONLY for approved listings.
+      // Admins and owning developers can read their own listings regardless of status.
+      allow read: if resource.data.status == "approved"
+        || isAdmin()
+        || (isAuthenticated() && resource.data.developerId == request.auth.uid);
+
+      // Direct client creation is blocked (Only Admin / Server Route Handlers create master PWA docs)
+      allow create: if isAdmin();
+
+      // Updates:
+      // - Admin has full update capability.
+      // - Developer can update content metadata on their own approved app,
+      //   but CANNOT change developerId, slug, status, viewsCount, or clicksCount.
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && resource.data.developerId == request.auth.uid
+        && request.resource.data.developerId == resource.data.developerId
+        && request.resource.data.slug == resource.data.slug
+        && request.resource.data.status == resource.data.status
+        && (!('viewsCount' in request.resource.data) || request.resource.data.viewsCount == resource.data.viewsCount)
+        && (!('clicksCount' in request.resource.data) || request.resource.data.clicksCount == resource.data.clicksCount)
+      );
+
+      // Deletions: Owner or Admin
+      allow delete: if isAdmin() || (
+        isAuthenticated() && resource.data.developerId == request.auth.uid
+      );
+    }
+
+    // =========================================================================
+    // 3. Submissions Collection (/submissions/{submissionId})
+    // =========================================================================
+    match /submissions/{submissionId} {
+      // Read: Admin or the submitting developer
+      allow read: if isAdmin() || (
+        isAuthenticated() && resource.data.developerId == request.auth.uid
+      );
+
+      // Create: Authenticated developer creating a 'draft' submission for themselves
+      allow create: if isAuthenticated()
+        && request.resource.data.developerId == request.auth.uid
+        && request.resource.data.status == "draft";
+
+      // Update:
+      // - Admin can update submissions (for reviews, status changes).
+      // - Developer can edit draft submissions or reset rejected submissions back to draft.
+      // - Developer CANNOT change developerId or directly set status to 'pending' or 'approved'.
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && resource.data.developerId == request.auth.uid
+        && request.resource.data.developerId == resource.data.developerId
+        && (resource.data.status == "draft" || resource.data.status == "rejected")
+        && request.resource.data.status == "draft"
+      );
+
+      // Delete: Developer can delete own draft submissions; Admin can delete any
+      allow delete: if isAdmin() || (
+        isAuthenticated()
+        && resource.data.developerId == request.auth.uid
+        && resource.data.status == "draft"
+      );
+    }
+
+    // =========================================================================
+    // 4. Categories Collection (/categories/{categoryId})
+    // =========================================================================
+    match /categories/{categoryId} {
+      // Public taxonomy is readable by all visitors
+      allow read: if true;
+
+      // Management restricted to Admins
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 5. Reviews Collection (/reviews/{reviewId}) [Phase 2 Ready]
+    // =========================================================================
+    match /reviews/{reviewId} {
+      // Public can read published reviews
+      allow read: if resource.data.status == "published"
+        || isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+      // Create:
+      // - Must be authenticated
+      // - userId must match auth.uid
+      // - Doc ID must follow compound pattern {userId}_{pwaId} to enforce 1 review per app
+      // - Rating must be between 1 and 5
+      // - Target PWA must exist and have status == 'approved'
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && reviewId == request.auth.uid + "_" + request.resource.data.pwaId
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.status == "published"
+        && exists(/databases/$(database)/documents/pwas/$(request.resource.data.pwaId))
+        && get(/databases/$(database)/documents/pwas/$(request.resource.data.pwaId)).data.status == "approved";
+
+      // Update: Author can update rating and comment, but cannot change userId or pwaId
+      allow update: if (isAuthenticated()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.pwaId == resource.data.pwaId
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5)
+        || isAdmin();
+
+      // Delete: Review author or Admin
+      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // =========================================================================
+    // 6. Favorites Collection (/favorites/{favId}) [Phase 2 Ready]
+    // =========================================================================
+    match /favorites/{favId} {
+      // Users can only read and manage their own bookmarks
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && favId == request.auth.uid + "_" + request.resource.data.pwaId;
+
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // =========================================================================
+    // 7. App Reports Collection (/appReports/{reportId}) [Phase 2 Ready]
+    // =========================================================================
+    match /appReports/{reportId} {
+      // Direct client creation disabled to prevent spam/abuse.
+      // Moderation reports are submitted exclusively via server-side API (/api/reports/submit)
+      // using the Firebase Admin SDK.
+      allow read, write: if isAdmin();
+    }
+  }
+}
+
