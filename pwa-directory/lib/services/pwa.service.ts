@@ -192,6 +192,8 @@ export async function getPwasByCategory(
  */
 export interface DeveloperAppItem {
   id: string;
+  slug?: string;
+  submissionId?: string;
   title: string;
   tagline: string;
   description: string;
@@ -206,10 +208,10 @@ export interface DeveloperAppItem {
   rejectionReason?: string;
   submittedAt?: unknown;
   approvedAt?: unknown;
+  unlistedAt?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
   isLivePwa?: boolean;
-  slug?: string;
 }
 
 /**
@@ -231,6 +233,8 @@ export async function getDeveloperSubmissions(
       const d = docSnap.data();
       items.push({
         id: docSnap.id,
+        slug: typeof d.slug === "string" ? d.slug : undefined,
+        submissionId: docSnap.id,
         title: d.title || "Untitled App",
         tagline: d.tagline || "",
         description: d.description || "",
@@ -277,6 +281,7 @@ export async function getDeveloperListings(
       items.push({
         id: docSnap.id,
         slug: d.slug || docSnap.id,
+        submissionId: typeof d.submissionId === "string" ? d.submissionId : undefined,
         title: d.title || "Untitled App",
         tagline: d.tagline || "",
         description: d.description || "",
@@ -290,15 +295,76 @@ export async function getDeveloperListings(
         status: d.status || "approved",
         submittedAt: d.submittedAt,
         approvedAt: d.approvedAt,
+        unlistedAt: d.unlistedAt,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
-        isLivePwa: true,
+        isLivePwa: d.status === "approved",
       });
     });
 
     return items;
   } catch (error) {
     console.error("Error fetching developer listings:", error);
+    return [];
+  }
+}
+
+/**
+ * Aggregates all developer apps with single-source-of-truth deduplication.
+ * Canonical rule:
+ * - 'pwas' collection holds live/suspended listings
+ * - 'submissions' collection holds draft, pending, or rejected records
+ * - An approved app appears exactly ONCE (using the canonical PWA document)
+ */
+export async function getDeveloperDashboardApps(
+  developerId: string
+): Promise<DeveloperAppItem[]> {
+  if (!developerId) return [];
+
+  try {
+    const [submissions, liveListings] = await Promise.all([
+      getDeveloperSubmissions(developerId),
+      getDeveloperListings(developerId),
+    ]);
+
+    // Build lookup set of already represented / approved apps from live listings
+    const liveSubmissionIds = new Set<string>();
+    const liveSlugs = new Set<string>();
+
+    liveListings.forEach((pwa) => {
+      if (pwa.submissionId) liveSubmissionIds.add(pwa.submissionId);
+      if (pwa.slug) liveSlugs.add(pwa.slug);
+      liveSlugs.add(pwa.id);
+    });
+
+    // Submissions that are draft, pending, or rejected, and not already covered by a live PWA listing
+    const nonDuplicatedSubmissions = submissions.filter((sub) => {
+      if (liveSubmissionIds.has(sub.id)) return false;
+      if (sub.slug && liveSlugs.has(sub.slug)) return false;
+      if (sub.status === "approved") return false; // Approved apps are canonically represented by the PWA doc
+      return true;
+    });
+
+    const combined = [...liveListings, ...nonDuplicatedSubmissions];
+
+    // Sort by timestamp (newest first)
+    combined.sort((a, b) => {
+      const getEpoch = (val: unknown) => {
+        if (!val) return 0;
+        if (typeof val === "object" && val !== null && "seconds" in val) {
+          return (val as { seconds: number }).seconds * 1000;
+        }
+        if (val instanceof Date) return val.getTime();
+        return 0;
+      };
+      const timeA = getEpoch(a.updatedAt || a.approvedAt || a.submittedAt || a.createdAt);
+      const timeB = getEpoch(b.updatedAt || b.approvedAt || b.submittedAt || b.createdAt);
+      return timeB - timeA;
+    });
+
+    return combined;
+  } catch (err) {
+    console.error("Error aggregating developer dashboard apps:", err);
     return [];
   }
 }
@@ -339,3 +405,70 @@ export async function deleteDraftSubmission(
   }
 }
 
+/**
+ * Safely cancels a developer's pending submission.
+ */
+export async function cancelPendingSubmission(
+  submissionId: string,
+  developerId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!submissionId || !developerId) {
+    return { ok: false, error: "Invalid submission ID or user session." };
+  }
+
+  try {
+    const docRef = doc(db, "submissions", submissionId);
+    const snap = await getDoc(docRef);
+
+    if (!snap.exists()) {
+      return { ok: false, error: "Submission not found." };
+    }
+
+    const data = snap.data();
+    if (data.developerId !== developerId) {
+      return { ok: false, error: "Unauthorized: You do not own this submission." };
+    }
+
+    if (data.status !== "pending") {
+      return { ok: false, error: "Only pending submissions can be cancelled." };
+    }
+
+    await deleteDoc(docRef);
+    return { ok: true };
+  } catch (error) {
+    console.error("Error cancelling pending submission:", error);
+    return { ok: false, error: "Could not cancel submission." };
+  }
+}
+
+/**
+ * Client helper to unpublish/remove an approved PWA listing.
+ */
+export async function removeApprovedPwaListing(params: {
+  slug: string;
+  idToken: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/pwa/remove", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.idToken}`,
+      },
+      body: JSON.stringify({ slug: params.slug }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      return { ok: false, error: data.error || "Failed to remove listing." };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    console.error("Network error removing listing:", err);
+    return {
+      ok: false,
+      error: "Network connection failed while removing listing.",
+    };
+  }
+}

@@ -4,9 +4,10 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  getDeveloperSubmissions,
-  getDeveloperListings,
+  getDeveloperDashboardApps,
   deleteDraftSubmission,
+  cancelPendingSubmission,
+  removeApprovedPwaListing,
   type DeveloperAppItem,
 } from "@/lib/services/pwa.service";
 import {
@@ -24,10 +25,14 @@ import {
   Sparkles,
   RefreshCw,
   FolderOpen,
+  XCircle,
+  ShieldOff,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { PwaStatus } from "@/types";
+import Swal from "sweetalert2";
 
 export default function DeveloperDashboardPage() {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -36,10 +41,10 @@ export default function DeveloperDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Load Developer Data cleanly on auth state or refresh trigger
+  // Load Developer Data cleanly using deduplicated aggregation
   useEffect(() => {
     let isCancelled = false;
 
@@ -53,20 +58,17 @@ export default function DeveloperDashboardPage() {
       setFetchError(null);
 
       try {
-        const [submissions, liveListings] = await Promise.all([
-          getDeveloperSubmissions(user.uid),
-          getDeveloperListings(user.uid),
-        ]);
+        const apps = await getDeveloperDashboardApps(user.uid);
 
         if (!isCancelled) {
-          const liveIds = new Set(liveListings.map((l) => l.id));
-          const filteredSubs = submissions.filter((s) => !liveIds.has(s.id));
-          setItems([...liveListings, ...filteredSubs]);
+          setItems(apps);
         }
       } catch (err) {
         if (!isCancelled) {
           console.error("Failed to load developer dashboard data:", err);
-          setFetchError("Unable to load your applications. Please check your connection and try again.");
+          setFetchError(
+            "Unable to load your applications. Please check your connection and try again."
+          );
         }
       } finally {
         if (!isCancelled) {
@@ -86,15 +88,16 @@ export default function DeveloperDashboardPage() {
     setRefreshKey((k) => k + 1);
   }, []);
 
-  // Metric Computations (Calculated purely from real data)
+  // Metric Computations (Calculated from deduplicated single-source items)
   const stats = useMemo(() => {
     const total = items.length;
     const pending = items.filter((i) => i.status === "pending").length;
     const approved = items.filter((i) => i.status === "approved").length;
     const drafts = items.filter((i) => i.status === "draft").length;
     const rejected = items.filter((i) => i.status === "rejected").length;
+    const suspended = items.filter((i) => i.status === "suspended").length;
 
-    return { total, pending, approved, drafts, rejected };
+    return { total, pending, approved, drafts, rejected, suspended };
   }, [items]);
 
   // Filtered list by status tab
@@ -103,210 +106,340 @@ export default function DeveloperDashboardPage() {
     return items.filter((i) => i.status.toLowerCase() === activeFilter.toLowerCase());
   }, [items, activeFilter]);
 
-  // Delete Draft Handler
-  const handleDeleteDraft = async (submissionId: string) => {
-    if (!user?.uid) return;
-    const confirmed = window.confirm("Are you sure you want to delete this draft submission?");
-    if (!confirmed) return;
+  // Delete Draft Handler with SweetAlert2
+  const handleDeleteDraft = async (submissionId: string, title: string) => {
+    if (!user?.uid || actionLoadingId) return;
 
-    setDeletingId(submissionId);
+    const result = await Swal.fire({
+      title: "Delete this draft?",
+      text: `Are you sure you want to delete the draft for "${title}"? This cannot be undone.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete Draft",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#e11d48",
+      customClass: { popup: "rounded-xl" },
+    });
+
+    if (!result.isConfirmed) return;
+
+    setActionLoadingId(submissionId);
     try {
       const res = await deleteDraftSubmission(submissionId, user.uid);
       if (res.ok) {
         setItems((prev) => prev.filter((i) => i.id !== submissionId));
+        await Swal.fire({
+          icon: "success",
+          title: "Draft deleted",
+          timer: 1500,
+          showConfirmButton: false,
+          customClass: { popup: "rounded-xl" },
+        });
       } else {
-        alert(res.error || "Could not delete draft.");
+        await Swal.fire({
+          icon: "error",
+          title: "Action failed",
+          text: res.error || "Could not delete draft.",
+          customClass: { popup: "rounded-xl" },
+        });
       }
     } catch {
-      alert("Error deleting draft.");
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "An unexpected network error occurred.",
+        customClass: { popup: "rounded-xl" },
+      });
     } finally {
-      setDeletingId(null);
+      setActionLoadingId(null);
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // Auth Loading State
-  // ---------------------------------------------------------------------------
+  // Cancel Pending Submission Handler
+  const handleCancelPending = async (submissionId: string, title: string) => {
+    if (!user?.uid || actionLoadingId) return;
+
+    const result = await Swal.fire({
+      title: "Cancel submission?",
+      text: `Withdraw "${title}" from the moderation queue?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Cancel Submission",
+      cancelButtonText: "Keep in Queue",
+      confirmButtonColor: "#e11d48",
+      customClass: { popup: "rounded-xl" },
+    });
+
+    if (!result.isConfirmed) return;
+
+    setActionLoadingId(submissionId);
+    try {
+      const res = await cancelPendingSubmission(submissionId, user.uid);
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== submissionId));
+        await Swal.fire({
+          icon: "info",
+          title: "Submission cancelled",
+          text: "Your submission has been withdrawn from the review queue.",
+          timer: 1800,
+          showConfirmButton: false,
+          customClass: { popup: "rounded-xl" },
+        });
+      } else {
+        await Swal.fire({
+          icon: "error",
+          title: "Action failed",
+          text: res.error || "Could not cancel submission.",
+          customClass: { popup: "rounded-xl" },
+        });
+      }
+    } catch {
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "An unexpected network error occurred.",
+        customClass: { popup: "rounded-xl" },
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Remove / Unpublish Approved Listing Handler
+  const handleRemoveListing = async (slug: string, title: string) => {
+    if (!user || actionLoadingId) return;
+
+    const result = await Swal.fire({
+      title: "Remove this listing?",
+      text: "The app will no longer be publicly listed. Your submission history will remain available.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Remove Listing",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#e11d48",
+      customClass: { popup: "rounded-xl" },
+    });
+
+    if (!result.isConfirmed) return;
+
+    setActionLoadingId(slug);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await removeApprovedPwaListing({ slug, idToken });
+
+      if (res.ok) {
+        await Swal.fire({
+          icon: "success",
+          title: "Listing removed",
+          text: `"${title}" has been unlisted from the public directory.`,
+          timer: 2000,
+          showConfirmButton: false,
+          customClass: { popup: "rounded-xl" },
+        });
+        setRefreshKey((k) => k + 1);
+      } else {
+        await Swal.fire({
+          icon: "error",
+          title: "Action failed",
+          text: res.error || "Could not remove listing.",
+          customClass: { popup: "rounded-xl" },
+        });
+      }
+    } catch {
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "An unexpected network error occurred.",
+        customClass: { popup: "rounded-xl" },
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // View Rejection Reason Modal
+  const handleViewRejectionReason = (title: string, reason?: string) => {
+    Swal.fire({
+      title: `Moderation Feedback: ${title}`,
+      text: reason || "No detailed moderation notes were provided.",
+      icon: "info",
+      confirmButtonText: "Close",
+      customClass: { popup: "rounded-xl" },
+    });
+  };
+
+  // Auth Loading
   if (authLoading) {
     return (
       <div className="py-20 flex flex-col justify-center items-center">
-        <div className="w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)] text-center">
-          <div className="w-8 h-8 border-3 border-(--coral) border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <span className="font-mono text-xs uppercase tracking-wider text-(--body-dim) block mb-1">
-            authenticating session
-          </span>
-          <p className="text-sm font-medium text-(--ink)">
-            Loading developer dashboard...
-          </p>
-        </div>
+        <div className="w-8 h-8 border-3 border-(--coral) border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-xs font-mono text-(--body-dim)">Authenticating developer...</p>
       </div>
     );
   }
 
-  // ---------------------------------------------------------------------------
   // Unauthenticated Guard
-  // ---------------------------------------------------------------------------
   if (!isAuthenticated) {
     return (
       <div className="py-20 flex flex-col justify-center items-center">
-        <div className="w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)] text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-(--ink)/5 flex items-center justify-center mb-6">
-            <Lock className="w-6 h-6 text-(--body)" />
+        <div className="w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)] text-center space-y-5">
+          <div className="mx-auto w-12 h-12 rounded-full bg-(--ink)/5 text-(--ink) flex items-center justify-center">
+            <Lock className="w-6 h-6" />
           </div>
 
-          <span className="font-mono text-xs uppercase tracking-wider text-(--body-dim) block mb-2">
-            developer dashboard
-          </span>
-
-          <h1 className="font-display text-3xl font-medium text-(--ink) tracking-tight mb-3">
-            Authentication Required
-          </h1>
-
-          <p className="text-sm text-(--body) leading-relaxed mb-8">
-            Please log in with your developer account to access your applications and submissions.
-          </p>
-
-          <div className="flex flex-col gap-3">
-            <Link href="/login">
-              <Button className="w-full h-11 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-sm">
-                Log in to Dashboard
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button
-                variant="outline"
-                className="w-full h-11 border-(--line) text-(--ink) bg-transparent hover:bg-(--ink-soft) font-medium text-sm"
-              >
-                Register as Developer
-              </Button>
-            </Link>
+          <div>
+            <h1 className="font-display text-2xl font-medium text-(--ink) tracking-tight mb-1">
+              Developer Portal
+            </h1>
+            <p className="text-xs text-(--body) leading-relaxed">
+              Please log in with your developer account to manage your listings.
+            </p>
           </div>
+
+          <Link href="/login">
+            <Button className="w-full h-11 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-sm">
+              Log In
+            </Button>
+          </Link>
         </div>
       </div>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Authenticated Developer Dashboard Content
-  // ---------------------------------------------------------------------------
   return (
     <div className="space-y-8">
-      {/* Welcome Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-(--line)">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="font-mono text-[11px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 font-semibold">
-              Workspace Overview
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-(--body-dim)">
+              Developer Hub
             </span>
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-medium text-(--ink) tracking-tight">
-            Welcome back, {profile?.firstName || user?.displayName || "Developer"}
+            Welcome back, {profile?.fullName || user?.displayName || "Developer"}
           </h1>
-          <p className="text-xs sm:text-sm text-(--body) mt-1">
-            Manage your submitted progressive web apps, monitor review status, and track live listings.
+          <p className="text-xs text-(--body) mt-0.5">
+            Manage your progressive web applications, review statuses, and track live listings.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-3">
+          <Link href="/submit">
+            <Button className="h-10 px-5 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-xs rounded-md shadow-none flex items-center gap-1.5 cursor-pointer">
+              <Plus className="w-4 h-4" />
+              <span>Submit App</span>
+            </Button>
+          </Link>
+
           <Button
             variant="outline"
             onClick={handleRetry}
             disabled={loading}
             className="h-10 px-3 border-(--line) text-(--body) hover:text-(--ink) bg-(--card) hover:bg-(--ink-soft) text-xs font-mono"
-            aria-label="Refresh dashboard data"
+            title="Refresh dashboard data"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline ml-1.5">Refresh</span>
           </Button>
-
-          <Link href="/submit">
-            <Button className="h-10 px-5 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-xs rounded-md shadow-none flex items-center gap-1.5">
-              <Plus className="w-4 h-4" />
-              <span>Submit New App</span>
-            </Button>
-          </Link>
         </div>
       </div>
 
-      {/* Real Stats Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         {/* Total Apps */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-5 shadow-[3px_3px_0_0_var(--line)] space-y-1.5">
-          <div className="flex items-center justify-between text-(--body-dim)">
-            <span className="text-[11px] font-mono uppercase tracking-wider">Total Apps</span>
-            <Layers className="w-4 h-4 text-(--body)" />
+        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
+          <div className="flex items-center justify-between text-(--body-dim) mb-2">
+            <span className="font-mono text-xs uppercase tracking-wider">Total Apps</span>
+            <Layers className="w-4 h-4" />
           </div>
-          <div className="font-display text-3xl font-semibold text-(--ink)">
+          <div className="font-display text-2xl sm:text-3xl font-bold text-(--ink)">
             {loading ? "-" : stats.total}
           </div>
-          <p className="text-[11px] text-(--body-dim)">All submissions & listings</p>
+          <p className="text-[11px] font-mono text-(--body-dim) mt-1">Across all states</p>
         </div>
 
-        {/* Pending Review */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-5 shadow-[3px_3px_0_0_var(--line)] space-y-1.5">
-          <div className="flex items-center justify-between text-amber-700">
-            <span className="text-[11px] font-mono uppercase tracking-wider">Pending</span>
-            <Clock className="w-4 h-4" />
-          </div>
-          <div className="font-display text-3xl font-semibold text-amber-900">
-            {loading ? "-" : stats.pending}
-          </div>
-          <p className="text-[11px] text-(--body-dim)">Awaiting moderation</p>
-        </div>
-
-        {/* Live / Approved */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-5 shadow-[3px_3px_0_0_var(--line)] space-y-1.5">
-          <div className="flex items-center justify-between text-emerald-700">
-            <span className="text-[11px] font-mono uppercase tracking-wider">Live</span>
+        {/* Live on Directory */}
+        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
+          <div className="flex items-center justify-between text-emerald-700 mb-2">
+            <span className="font-mono text-xs uppercase tracking-wider">Approved</span>
             <CheckCircle2 className="w-4 h-4" />
           </div>
-          <div className="font-display text-3xl font-semibold text-emerald-900">
+          <div className="font-display text-2xl sm:text-3xl font-bold text-emerald-800">
             {loading ? "-" : stats.approved}
           </div>
-          <p className="text-[11px] text-(--body-dim)">Live on public directory</p>
+          <p className="text-[11px] font-mono text-emerald-700 mt-1">Published live</p>
+        </div>
+
+        {/* In Review */}
+        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
+          <div className="flex items-center justify-between text-amber-700 mb-2">
+            <span className="font-mono text-xs uppercase tracking-wider">In Review</span>
+            <Clock className="w-4 h-4" />
+          </div>
+          <div className="font-display text-2xl sm:text-3xl font-bold text-amber-800">
+            {loading ? "-" : stats.pending}
+          </div>
+          <p className="text-[11px] font-mono text-amber-700 mt-1">Pending approval</p>
         </div>
 
         {/* Drafts */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-5 shadow-[3px_3px_0_0_var(--line)] space-y-1.5">
-          <div className="flex items-center justify-between text-(--body-dim)">
-            <span className="text-[11px] font-mono uppercase tracking-wider">Drafts</span>
-            <Sparkles className="w-4 h-4 text-amber-600" />
+        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
+          <div className="flex items-center justify-between text-(--body-dim) mb-2">
+            <span className="font-mono text-xs uppercase tracking-wider">Drafts</span>
+            <Sparkles className="w-4 h-4" />
           </div>
-          <div className="font-display text-3xl font-semibold text-(--ink)">
+          <div className="font-display text-2xl sm:text-3xl font-bold text-(--ink)">
             {loading ? "-" : stats.drafts}
           </div>
-          <p className="text-[11px] text-(--body-dim)">In-progress submissions</p>
+          <p className="text-[11px] font-mono text-(--body-dim) mt-1">Unsubmitted</p>
+        </div>
+
+        {/* Rejected */}
+        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
+          <div className="flex items-center justify-between text-rose-700 mb-2">
+            <span className="font-mono text-xs uppercase tracking-wider">Rejected</span>
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+          <div className="font-display text-2xl sm:text-3xl font-bold text-rose-800">
+            {loading ? "-" : stats.rejected}
+          </div>
+          <p className="text-[11px] font-mono text-rose-700 mt-1">Needs correction</p>
         </div>
       </div>
 
-      {/* Applications List Section */}
-      <div id="apps" className="space-y-5 scroll-mt-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Applications Section Header & Filter Tabs */}
+      <div id="apps" className="space-y-4 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-medium text-(--ink) tracking-tight">
-              My Applications ({filteredItems.length})
-            </h2>
-            <p className="text-xs text-(--body-dim) mt-0.5">
-              Review submission details, verification flags, and live directory listings.
+            <h2 className="font-display text-xl font-medium text-(--ink)">My Applications</h2>
+            <p className="text-xs text-(--body)">
+              View live listings, continue drafts, and track moderation progress.
             </p>
           </div>
 
-          {/* Status Filter Chips */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-            {["all", "draft", "pending", "approved", "rejected"].map((tab) => {
-              const isActive = activeFilter === tab;
+          {/* Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-(--ink)/5 rounded-lg border border-(--line)">
+            {[
+              { id: "all", label: "All" },
+              { id: "approved", label: "Approved" },
+              { id: "pending", label: "Pending" },
+              { id: "draft", label: "Drafts" },
+              { id: "rejected", label: "Rejected" },
+              { id: "suspended", label: "Suspended" },
+            ].map((tab) => {
+              const isActive = activeFilter === tab.id;
               return (
                 <button
-                  key={tab}
+                  key={tab.id}
                   type="button"
-                  onClick={() => setActiveFilter(tab)}
-                  className={`px-3 py-1 rounded-md text-xs font-mono font-medium capitalize transition-all border ${
+                  onClick={() => setActiveFilter(tab.id)}
+                  className={`px-3 py-1 rounded-md text-xs font-mono font-medium transition-all border ${
                     isActive
                       ? "bg-(--ink) text-(--paper) border-(--ink) shadow-[2px_2px_0_0_var(--coral)]"
                       : "bg-(--card) text-(--body) border-(--line) hover:border-(--ink)/40 hover:text-(--ink)"
                   }`}
                 >
-                  {tab}
+                  {tab.label}
                 </button>
               );
             })}
@@ -404,7 +537,12 @@ export default function DeveloperDashboardPage() {
 
                     <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono text-(--body-dim) pt-0.5">
                       <span className="truncate max-w-[220px]">{app.appUrl}</span>
-                      {app.isLivePwa && <span className="text-emerald-700 font-semibold">• Live on Directory</span>}
+                      {app.status === "approved" && (
+                        <span className="text-emerald-700 font-semibold">• Live on Directory</span>
+                      )}
+                      {app.status === "suspended" && (
+                        <span className="text-amber-700 font-semibold">• Unlisted from Directory</span>
+                      )}
                     </div>
 
                     {/* Rejection Notes Callout if rejected */}
@@ -416,37 +554,56 @@ export default function DeveloperDashboardPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* Status-Specific Actions */}
                 <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-(--line)">
-                  {app.isLivePwa && app.slug && (
+                  {/* APPROVED ACTIONS */}
+                  {app.status === "approved" && (
                     <>
-                      <Link href={`/apps/${app.slug}`}>
-                        <Button
-                          variant="outline"
-                          className="h-9 px-3 border-(--line) text-(--ink) hover:bg-(--ink-soft) text-xs font-mono"
-                        >
-                          <Eye className="w-3.5 h-3.5 mr-1.5" />
-                          Directory Listing
-                        </Button>
-                      </Link>
+                      {app.slug && (
+                        <Link href={`/apps/${app.slug}`}>
+                          <Button
+                            variant="outline"
+                            className="h-9 px-3 border-(--line) text-(--ink) hover:bg-(--ink-soft) text-xs font-mono"
+                          >
+                            <Eye className="w-3.5 h-3.5 mr-1.5" />
+                            Directory Listing
+                          </Button>
+                        </Link>
+                      )}
 
-                      <a
-                        href={app.appUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex"
-                      >
-                        <Button
-                          variant="outline"
-                          className="h-9 px-3 border-(--line) text-(--body) hover:text-(--ink) text-xs font-mono"
+                      {app.appUrl && (
+                        <a
+                          href={app.appUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex"
                         >
-                          <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                          Launch App
-                        </Button>
-                      </a>
+                          <Button
+                            variant="outline"
+                            className="h-9 px-3 border-(--line) text-(--body) hover:text-(--ink) text-xs font-mono"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                            Launch App
+                          </Button>
+                        </a>
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          handleRemoveListing(app.slug || app.id, app.title)
+                        }
+                        disabled={actionLoadingId === (app.slug || app.id)}
+                        className="h-9 px-3 text-rose-700 hover:text-rose-800 hover:bg-rose-50 text-xs font-mono"
+                        title="Unpublish this app from the public directory"
+                      >
+                        <ShieldOff className="w-3.5 h-3.5 mr-1.5" />
+                        <span>Remove Listing</span>
+                      </Button>
                     </>
                   )}
 
+                  {/* DRAFT ACTIONS */}
                   {app.status === "draft" && (
                     <>
                       <Link href="/submit">
@@ -458,28 +615,66 @@ export default function DeveloperDashboardPage() {
 
                       <Button
                         variant="ghost"
-                        onClick={() => handleDeleteDraft(app.id)}
-                        disabled={deletingId === app.id}
+                        onClick={() => handleDeleteDraft(app.id, app.title)}
+                        disabled={actionLoadingId === app.id}
                         className="h-9 px-2.5 text-rose-700 hover:text-rose-800 hover:bg-rose-50 text-xs font-mono"
+                        title="Delete draft"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </>
                   )}
 
+                  {/* PENDING ACTIONS */}
                   {app.status === "pending" && (
-                    <div className="text-[11px] font-mono text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
-                      In Review Queue
-                    </div>
+                    <>
+                      <div className="text-[11px] font-mono text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+                        In Review Queue
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleCancelPending(app.id, app.title)}
+                        disabled={actionLoadingId === app.id}
+                        className="h-9 px-3 text-rose-700 hover:text-rose-800 hover:bg-rose-50 text-xs font-mono"
+                        title="Withdraw submission from moderation queue"
+                      >
+                        <XCircle className="w-3.5 h-3.5 mr-1.5" />
+                        <span>Cancel Submission</span>
+                      </Button>
+                    </>
                   )}
 
+                  {/* REJECTED ACTIONS */}
                   {app.status === "rejected" && (
-                    <Link href="/submit">
-                      <Button className="h-9 px-3.5 bg-(--coral) hover:bg-[#e85a3e] text-white text-xs font-mono">
-                        <span>Resubmit</span>
-                        <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                      </Button>
-                    </Link>
+                    <>
+                      {app.rejectionReason && (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            handleViewRejectionReason(app.title, app.rejectionReason)
+                          }
+                          className="h-9 px-3 border-(--line) text-(--body) hover:text-(--ink) text-xs font-mono"
+                        >
+                          <Info className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
+                          View Reason
+                        </Button>
+                      )}
+
+                      <Link href="/submit">
+                        <Button className="h-9 px-3.5 bg-(--coral) hover:bg-[#e85a3e] text-white text-xs font-mono">
+                          <span>Fix & Resubmit</span>
+                          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                        </Button>
+                      </Link>
+                    </>
+                  )}
+
+                  {/* SUSPENDED ACTIONS */}
+                  {app.status === "suspended" && (
+                    <div className="text-[11px] font-mono text-stone-700 bg-stone-100 px-3 py-1.5 rounded-lg border border-stone-300">
+                      Listing Unpublished
+                    </div>
                   )}
                 </div>
               </div>

@@ -165,10 +165,5 @@ if (!getApps().length) {
 
 export const adminAuth: Auth = getAuth(adminApp);
 export const adminDb: Firestore = getFirestore(adminApp);
-try {
-  adminDb.settings({ ignoreUndefinedProperties: true });
-} catch {
-  // Ignore if settings already locked
-}
 export const adminStorage: Storage = getStorage(adminApp);
 export { FieldValue, adminApp };

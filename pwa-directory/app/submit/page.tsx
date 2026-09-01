@@ -431,10 +431,17 @@ export default function SubmitPage() {
 
           <div className="flex flex-col sm:flex-row gap-3 pt-4">
             <Button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/dashboard")}
               className="flex-1 h-11 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-sm"
             >
-              Back to directory
+              Go to Developer Dashboard
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/")}
+              className="flex-1 h-11 border-(--line) text-(--ink) bg-transparent hover:bg-(--ink-soft) font-medium text-sm"
+            >
+              Back to Directory
             </Button>
             <Button
               variant="outline"
@@ -491,7 +498,7 @@ export default function SubmitPage() {
         {/* Header navigation */}
         <div className="flex items-center justify-between mb-8">
           <Link
-            href="/"
+            href="/dashboard"
             className="inline-flex items-center gap-2 text-sm font-medium text-(--body) hover:text-(--ink) transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />

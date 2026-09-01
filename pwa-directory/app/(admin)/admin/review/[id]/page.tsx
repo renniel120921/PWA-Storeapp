@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import Swal from "sweetalert2";
 
 interface ReviewInspectorProps {
   params: Promise<{ id: string }>;
@@ -118,34 +117,11 @@ export default function AdminSubmissionInspectorPage({
           message: "Application approved successfully and published to the live directory.",
         });
         setSubmission((prev) => (prev ? { ...prev, status: "approved" } : null));
-        await Swal.fire({
-          icon: "success",
-          title: "Application Approved!",
-          text: `"${submission?.title}" is now published to the live directory.`,
-          timer: 2000,
-          timerProgressBar: true,
-          showConfirmButton: false,
-          customClass: { popup: "rounded-xl" },
-        });
       } else {
         setActionError(res.error || "Failed to approve application.");
-        await Swal.fire({
-          icon: "error",
-          title: "Decision Failed",
-          text: res.error || "Failed to approve application.",
-          customClass: { popup: "rounded-xl" },
-        });
       }
     } catch {
       setActionError("An unexpected error occurred while approving application.");
-      const msg = "An unexpected error occurred while approving application.";
-      setActionError(msg);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: msg,
-        customClass: { popup: "rounded-xl" },
-      });
     } finally {
       setSubmitting(false);
     }
@@ -187,34 +163,11 @@ export default function AdminSubmissionInspectorPage({
             : null
         );
         setRejectModalOpen(false);
-        await Swal.fire({
-          icon: "info",
-          title: "Submission Rejected",
-          text: "Feedback notes have been saved for the developer.",
-          timer: 2000,
-          timerProgressBar: true,
-          showConfirmButton: false,
-          customClass: { popup: "rounded-xl" },
-        });
       } else {
         setActionError(res.error || "Failed to reject submission.");
-        await Swal.fire({
-          icon: "error",
-          title: "Decision Failed",
-          text: res.error || "Failed to reject submission.",
-          customClass: { popup: "rounded-xl" },
-        });
       }
     } catch {
       setActionError("An unexpected error occurred while rejecting submission.");
-      const msg = "An unexpected error occurred while rejecting submission.";
-      setActionError(msg);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: msg,
-        customClass: { popup: "rounded-xl" },
-      });
     } finally {
       setSubmitting(false);
     }
