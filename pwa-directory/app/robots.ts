@@ -15,6 +15,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           "/admin",
           "/admin/",
+          "/admin-bootstrap",
           "/dashboard",
           "/dashboard/",
           "/submit",
