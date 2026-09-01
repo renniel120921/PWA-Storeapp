@@ -56,10 +56,37 @@ export default function AdminBootstrapPage() {
         body: JSON.stringify({ secret: secret.trim() }),
       });
 
-      const data = await res.json();
+      // 3. Safe response parsing
+      let data: { ok?: boolean; error?: string; message?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Handle non-JSON responses (e.g. Vercel 404 or 500 HTML error pages)
+        data = null;
+      }
 
-      if (!res.ok || !data.ok) {
-        setErrorMsg(data.error || "Failed to promote account. Please verify your secret.");
+      if (!res.ok || !data?.ok) {
+        if (data?.error) {
+          setErrorMsg(data.error);
+        } else if (res.status === 404) {
+          setErrorMsg(
+            "HTTP 404: The bootstrap endpoint (/api/admin/bootstrap) was not found. Please ensure the latest build is deployed to Vercel."
+          );
+        } else if (res.status === 403) {
+          setErrorMsg(
+            "HTTP 403: Admin bootstrap is disabled or the secret is incorrect. Check LIKHA_ADMIN_BOOTSTRAP_SECRET in Vercel settings."
+          );
+        } else if (res.status === 401) {
+          setErrorMsg(
+            "HTTP 401: Authentication expired or invalid. Please log in again."
+          );
+        } else if (res.status === 500) {
+          setErrorMsg(
+            "HTTP 500: Server configuration error. Please verify Firebase Admin credentials on Vercel."
+          );
+        } else {
+          setErrorMsg(`Server returned HTTP ${res.status} (${res.statusText || "Error"}).`);
+        }
         setIsSubmitting(false);
         return;
       }
@@ -71,8 +98,9 @@ export default function AdminBootstrapPage() {
         router.push("/admin");
         router.refresh();
       }, 2000);
-    } catch {
-      setErrorMsg("Network error occurred while connecting to the bootstrap endpoint.");
+    } catch (fetchErr: unknown) {
+      const msg = fetchErr instanceof Error ? fetchErr.message : "Connection failed";
+      setErrorMsg(`Network/client error: ${msg}. Please check your internet connection.`);
       setIsSubmitting(false);
     }
   };
