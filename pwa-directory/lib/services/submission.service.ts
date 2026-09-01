@@ -1,4 +1,3 @@
-import "server-only";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { PwaSubmissionSchema } from "@/lib/validators/pwa.validator";
