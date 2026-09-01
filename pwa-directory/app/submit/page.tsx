@@ -297,9 +297,42 @@ export default function SubmitPage() {
   };
 
   // ---------------------------------------------------------------------------
+  // Auth Loading State (Prevents layout flashing during session hydration)
+  // ---------------------------------------------------------------------------
+  if (authLoading) {
+    return (
+      <div
+        className="min-h-screen bg-(--paper) text-(--ink) flex flex-col justify-center items-center px-6 py-20"
+        style={
+          {
+            "--paper": "#F6F4EC",
+            "--card": "#FFFFFF",
+            "--ink": "#122A2C",
+            "--ink-soft": "#EEEAD9",
+            "--body": "#4C5652",
+            "--body-dim": "#7A8480",
+            "--line": "#DBD5C3",
+            "--coral": "#FF6A4D",
+          } as React.CSSProperties
+        }
+      >
+        <div className="w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)] text-center">
+          <div className="w-8 h-8 border-3 border-(--coral) border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <span className="font-mono text-xs uppercase tracking-wider text-(--body-dim) block mb-1">
+            authenticating session
+          </span>
+          <p className="text-sm font-medium text-(--ink)">
+            Verifying developer credentials...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Unauthenticated Guard Screen
   // ---------------------------------------------------------------------------
-  if (!authLoading && !isAuthenticated) {
+  if (!isAuthenticated) {
     return (
       <div
         className="min-h-screen bg-(--paper) text-(--ink) flex flex-col justify-center items-center px-6 py-20"
