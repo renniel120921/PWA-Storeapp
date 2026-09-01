@@ -36,9 +36,20 @@ export async function authenticateAdminServerRequest(
     const uid = decodedToken.uid;
     const email = decodedToken.email;
 
-    // Check user profile for admin role
-    const userDoc = await adminDb.collection("users").doc(uid).get();
-    if (!userDoc.exists || userDoc.data()?.role !== "admin") {
+    // Check custom claims and fallback to Firestore user document
+    const isCustomClaimAdmin = decodedToken.admin === true || decodedToken.role === "admin";
+    let isFirestoreAdmin = false;
+
+    try {
+      const userDoc = await adminDb.collection("users").doc(uid).get();
+      if (userDoc.exists && userDoc.data()?.role === "admin") {
+        isFirestoreAdmin = true;
+      }
+    } catch (dbErr) {
+      console.warn("[Admin Review Action] Firestore profile read warning:", dbErr);
+    }
+
+    if (!isCustomClaimAdmin && !isFirestoreAdmin) {
       throw new AdminActionError(403, "Forbidden: Administrator role required.");
     }
 
@@ -146,21 +157,18 @@ export async function approveSubmissionServer(
         : ["tools"];
       const primaryCat = subData.primaryCategory || categories[0] || "tools";
 
-      // 1. Create master public PWA listing
-      transaction.set(pwaRef, {
+      // 1. Create master public PWA listing with clean, sanitized payload (no undefined values)
+      const pwaData: Record<string, unknown> = {
         id: slug,
         slug: slug,
         submissionId: submissionId,
-        developerId: subData.developerId,
-        developerName: subData.developerName || "Independent Developer",
-        developerEmail: subData.developerEmail || undefined,
-        developerWebsite: subData.developerWebsite || undefined,
+        developerId: subData.developerId || liveData?.developerId || "",
+        developerName: subData.developerName || liveData?.developerName || "Independent Developer",
         title: title,
         tagline: subData.tagline || subData.draftData?.tagline || "",
         description: subData.description || subData.draftData?.description || "",
         appUrl: appUrl,
         app_url: appUrl,
-        manifestUrl: subData.manifestUrl || undefined,
         iconUrl: subData.iconUrl || subData.draftData?.iconUrl || "",
         screenshots: Array.isArray(subData.screenshots) ? subData.screenshots : [],
         primaryCategory: primaryCat,
@@ -173,11 +181,22 @@ export async function approveSubmissionServer(
         clicksCount: 0,
         ratingAverage: 0,
         ratingCount: 0,
-        createdAt: subData.createdAt || FieldValue.serverTimestamp(),
-        submittedAt: subData.submittedAt || FieldValue.serverTimestamp(),
+        createdAt: subData.createdAt || liveData?.createdAt || FieldValue.serverTimestamp(),
+        submittedAt: subData.submittedAt || liveData?.submittedAt || FieldValue.serverTimestamp(),
         approvedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+
+      const devEmail = subData.developerEmail || liveData?.developerEmail;
+      if (devEmail) pwaData.developerEmail = devEmail;
+
+      const devWebsite = subData.developerWebsite || liveData?.developerWebsite;
+      if (devWebsite) pwaData.developerWebsite = devWebsite;
+
+      const manifest = subData.manifestUrl || liveData?.manifestUrl;
+      if (manifest) pwaData.manifestUrl = manifest;
+
+      transaction.set(pwaRef, pwaData);
 
       // 2. Update submission status to approved
       transaction.update(submissionRef, {
@@ -279,4 +298,3 @@ export async function rejectSubmissionServer(
     throw new AdminActionError(500, "Database transaction failed while rejecting submission.");
   }
 }
-

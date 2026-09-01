@@ -1,3 +1,4 @@
+import "server-only";
 import { NextResponse } from "next/server";
 import {
   authenticateAdminServerRequest,
@@ -5,6 +6,9 @@ import {
   rejectSubmissionServer,
   AdminActionError,
 } from "@/lib/services/admin-server.service";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
@@ -41,6 +45,9 @@ export async function POST(request: Request) {
     // 3. Process approval or rejection
     if (action === "approve") {
       const result = await approveSubmissionServer(submissionId, session.uid);
+      console.info(
+        `[Admin Review Action][SUCCESS] Approved submission (${submissionId}) with slug: ${result.slug}`
+      );
       return NextResponse.json(result, { status: 200 });
     } else {
       const result = await rejectSubmissionServer(
@@ -48,21 +55,30 @@ export async function POST(request: Request) {
         session.uid,
         typeof reason === "string" ? reason : ""
       );
+      console.info(
+        `[Admin Review Action][SUCCESS] Rejected submission (${submissionId})`
+      );
       return NextResponse.json(result, { status: 200 });
     }
   } catch (error) {
     if (error instanceof AdminActionError) {
+      console.warn(`[Admin Review Action][${error.statusCode}] ${error.message}`);
       return NextResponse.json(
         { ok: false, error: error.message },
         { status: error.statusCode }
       );
     }
 
-    console.error("Unexpected error in /api/admin/review-action:", error);
+    console.error(
+      "[Admin Review Action][FIRESTORE_TRANSACTION_FAILED] Unexpected server exception in /api/admin/review-action:",
+      error
+    );
     return NextResponse.json(
-      { ok: false, error: "Internal server error occurred while processing review action." },
+      {
+        ok: false,
+        error: "Internal server error occurred while processing review decision. Please check database connectivity.",
+      },
       { status: 500 }
     );
   }
 }
-
