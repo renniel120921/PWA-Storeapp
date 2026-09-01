@@ -112,8 +112,8 @@ export default function Login() {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    // honeypot — real users never see or fill this; bots often do
-    companyWebsite: "",
+    // honeypot — opaque non-autofill field name; bots may fill this, browsers will not
+    _likha_hp_check: "",
   });
 
   const [rateLimited] = useState(() => {
@@ -169,10 +169,8 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Honeypot: if this hidden field got filled in, silently bail —
-    // no error message, since a real error would just teach a bot what
-    // to avoid next time.
-    if (formData.companyWebsite.trim() !== "") {
+    // Honeypot check: if filled by a scripted bot, silently bail
+    if (formData._likha_hp_check && formData._likha_hp_check.trim() !== "") {
       console.warn("Login blocked: honeypot field was filled.");
       return;
     }
@@ -285,18 +283,18 @@ export default function Login() {
             {/* Honeypot — hidden from real users, left for bots */}
             <div
               aria-hidden="true"
-              className="absolute -left-[9999px] w-px h-px overflow-hidden"
+              style={{ display: "none", position: "absolute", left: "-9999px" }}
             >
-              <label htmlFor="companyWebsite">Company website</label>
+              <label htmlFor="_likha_hp_check">Anti-bot verification</label>
               <input
-                id="companyWebsite"
-                name="companyWebsite"
+                id="_likha_hp_check"
+                name="_likha_hp_check"
                 type="text"
                 tabIndex={-1}
                 autoComplete="off"
-                value={formData.companyWebsite}
+                value={formData._likha_hp_check}
                 onChange={(e) =>
-                  setFormData({ ...formData, companyWebsite: e.target.value })
+                  setFormData({ ...formData, _likha_hp_check: e.target.value })
                 }
               />
             </div>
