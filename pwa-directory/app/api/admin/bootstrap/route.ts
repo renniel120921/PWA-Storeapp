@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     // 1. Ensure bootstrap secret is configured in the environment
     const configuredSecret = process.env.LIKHA_ADMIN_BOOTSTRAP_SECRET;
     if (!configuredSecret || configuredSecret.trim().length < 16) {
+      console.warn("[Admin Bootstrap][BOOTSTRAP_SECRET_MISSING] LIKHA_ADMIN_BOOTSTRAP_SECRET is missing or under 16 characters.");
       return NextResponse.json(
         {
           ok: false,
@@ -26,8 +27,7 @@ export async function POST(request: Request) {
     const credStatus = getAdminCredentialStatus();
     if (!credStatus.configured) {
       console.error(
-        "[Admin Bootstrap] Firebase Admin credentials missing or invalid in server environment. Status:",
-        credStatus.method
+        `[Admin Bootstrap][${credStatus.classification}] ${credStatus.diagnostic}`
       );
       return NextResponse.json(
         {
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     // 3. Extract and verify Firebase ID Token from Authorization header
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.warn("[Admin Bootstrap][AUTH_TOKEN_MISSING] Request missing Bearer Authorization header.");
       return NextResponse.json(
         { ok: false, error: "Authentication required. Missing Bearer token in Authorization header." },
         { status: 401 }
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
 
     const idToken = authHeader.replace(/^Bearer\s+/, "").trim();
     if (!idToken) {
+      console.warn("[Admin Bootstrap][AUTH_TOKEN_EMPTY] Bearer token string is empty.");
       return NextResponse.json(
         { ok: false, error: "Authentication token is empty." },
         { status: 401 }
@@ -59,8 +61,8 @@ export async function POST(request: Request) {
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(idToken);
-    } catch (verifyErr) {
-      console.warn("[Admin Bootstrap] Token verification rejected:", verifyErr);
+    } catch {
+      console.warn("[Admin Bootstrap][AUTH_TOKEN_INVALID] Token verification rejected by Firebase Auth.");
       return NextResponse.json(
         { ok: false, error: "Your session token is invalid or has expired. Please log in again." },
         { status: 401 }
@@ -75,6 +77,7 @@ export async function POST(request: Request) {
     try {
       body = await request.json();
     } catch {
+      console.warn("[Admin Bootstrap][PAYLOAD_INVALID] Failed to parse request JSON body.");
       return NextResponse.json(
         { ok: false, error: "Invalid JSON request body. Expected { secret: string }." },
         { status: 400 }
@@ -91,6 +94,7 @@ export async function POST(request: Request) {
       bufConfigured.length !== bufProvided.length ||
       !crypto.timingSafeEqual(bufConfigured, bufProvided)
     ) {
+      console.warn("[Admin Bootstrap][SECRET_MISMATCH] Provided secret did not match configured server secret.");
       return NextResponse.json(
         { ok: false, error: "Invalid bootstrap secret. Please double-check your secret key." },
         { status: 403 }
@@ -98,39 +102,50 @@ export async function POST(request: Request) {
     }
 
     // 5. Promote the authenticated user's own account in Firestore
-    const userRef = adminDb.collection("users").doc(authenticatedUid);
-    const userSnap = await userRef.get();
+    try {
+      const userRef = adminDb.collection("users").doc(authenticatedUid);
+      const userSnap = await userRef.get();
 
-    if (!userSnap.exists) {
-      // Create user profile document with admin role if not present
-      await userRef.set({
-        uid: authenticatedUid,
-        email: authenticatedEmail,
-        fullName: decodedToken.name || "Administrator",
-        role: "admin",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        promotedVia: "bootstrap",
-      });
-    } else {
-      const existingData = userSnap.data();
-      if (existingData?.role === "admin") {
-        return NextResponse.json(
-          {
-            ok: true,
-            message: `Account (${authenticatedEmail || authenticatedUid}) is already an administrator.`,
-            uid: authenticatedUid,
-            role: "admin",
-          },
-          { status: 200 }
-        );
+      if (!userSnap.exists) {
+        // Create user profile document with admin role if not present
+        await userRef.set({
+          uid: authenticatedUid,
+          email: authenticatedEmail,
+          fullName: decodedToken.name || "Administrator",
+          role: "admin",
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          promotedVia: "bootstrap",
+        });
+      } else {
+        const existingData = userSnap.data();
+        if (existingData?.role === "admin") {
+          return NextResponse.json(
+            {
+              ok: true,
+              message: `Account (${authenticatedEmail || authenticatedUid}) is already an administrator.`,
+              uid: authenticatedUid,
+              role: "admin",
+            },
+            { status: 200 }
+          );
+        }
+
+        await userRef.update({
+          role: "admin",
+          updatedAt: FieldValue.serverTimestamp(),
+          promotedVia: "bootstrap",
+        });
       }
-
-      await userRef.update({
-        role: "admin",
-        updatedAt: FieldValue.serverTimestamp(),
-        promotedVia: "bootstrap",
-      });
+    } catch {
+      console.error("[Admin Bootstrap][FIRESTORE_WRITE_FAILED] Firestore document update threw an error.");
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failed to update user profile in Firestore. Check Firestore permissions and database availability.",
+        },
+        { status: 500 }
+      );
     }
 
     // 6. Update Firebase Auth custom claims for instant session synchronization
@@ -139,9 +154,11 @@ export async function POST(request: Request) {
         role: "admin",
         admin: true,
       });
-    } catch (claimErr) {
-      console.warn("[Admin Bootstrap] Custom claim update skipped (Firestore profile updated):", claimErr);
+    } catch {
+      console.warn("[Admin Bootstrap][CLAIMS_UPDATE_FAILED] Custom claims could not be applied; Firestore document was successfully updated.");
     }
+
+    console.info(`[Admin Bootstrap][SUCCESS] Successfully promoted account (${authenticatedUid}) to admin role.`);
 
     return NextResponse.json(
       {
@@ -152,13 +169,12 @@ export async function POST(request: Request) {
       },
       { status: 200 }
     );
-  } catch (error) {
-    console.error("[Admin Bootstrap] Server error during admin promotion:", error);
+  } catch {
+    console.error("[Admin Bootstrap][UNKNOWN] Unhandled exception occurred during admin bootstrap.");
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Internal server error occurred during admin promotion. Please check Vercel server function logs.",
+        error: "Internal server error occurred during admin promotion. Please check Vercel server function logs.",
       },
       { status: 500 }
     );

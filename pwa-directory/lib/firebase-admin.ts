@@ -34,38 +34,81 @@ function parseServiceAccountJson(raw: string): Record<string, unknown> | null {
     cleaned = cleaned.slice(1, -1);
   }
   try {
-    return JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object") {
+      if (typeof parsed.private_key === "string") {
+        parsed.private_key = cleanPrivateKey(parsed.private_key);
+      }
+      return parsed;
+    }
   } catch {
     try {
       // Support base64-encoded service account key strings
       const decoded = Buffer.from(cleaned, "base64").toString("utf-8");
-      return JSON.parse(decoded);
+      const parsed = JSON.parse(decoded);
+      if (parsed && typeof parsed === "object") {
+        if (typeof parsed.private_key === "string") {
+          parsed.private_key = cleanPrivateKey(parsed.private_key);
+        }
+        return parsed;
+      }
     } catch {
       return null;
     }
   }
+  return null;
 }
 
 export function getAdminCredentialStatus(): {
   configured: boolean;
-  method: "SERVICE_ACCOUNT_KEY" | "INDIVIDUAL_KEYS" | "INVALID_FORMAT" | "NONE";
+  classification:
+    | "CONFIGURED_SERVICE_ACCOUNT_KEY"
+    | "CONFIGURED_INDIVIDUAL_KEYS"
+    | "ADMIN_CREDENTIALS_MISSING"
+    | "ADMIN_CREDENTIALS_INVALID";
+  diagnostic: string;
 } {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     const parsed = parseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    if (parsed && typeof parsed.client_email === "string" && typeof parsed.private_key === "string") {
+      return {
+        configured: true,
+        classification: "CONFIGURED_SERVICE_ACCOUNT_KEY",
+        diagnostic: "Service account JSON parsed successfully.",
+      };
+    }
     return {
-      configured: !!parsed,
-      method: parsed ? "SERVICE_ACCOUNT_KEY" : "INVALID_FORMAT",
+      configured: false,
+      classification: "ADMIN_CREDENTIALS_INVALID",
+      diagnostic: "FIREBASE_SERVICE_ACCOUNT_KEY is present but could not be parsed as valid JSON/Base64 service account.",
     };
   }
-  if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-    const pk = cleanPrivateKey(process.env.FIREBASE_PRIVATE_KEY);
-    const valid = pk.includes("BEGIN PRIVATE KEY") && pk.includes("END PRIVATE KEY");
+
+  if (process.env.FIREBASE_CLIENT_EMAIL || process.env.FIREBASE_PRIVATE_KEY) {
+    const email = (process.env.FIREBASE_CLIENT_EMAIL || "").trim();
+    const pk = cleanPrivateKey(process.env.FIREBASE_PRIVATE_KEY || "");
+    const emailValid = email.includes("@");
+    const pkValid = pk.includes("BEGIN PRIVATE KEY") && pk.includes("END PRIVATE KEY");
+
+    if (emailValid && pkValid) {
+      return {
+        configured: true,
+        classification: "CONFIGURED_INDIVIDUAL_KEYS",
+        diagnostic: "Individual client email and PEM private key verified.",
+      };
+    }
     return {
-      configured: valid,
-      method: valid ? "INDIVIDUAL_KEYS" : "INVALID_FORMAT",
+      configured: false,
+      classification: "ADMIN_CREDENTIALS_INVALID",
+      diagnostic: `Individual keys incomplete: emailValid=${emailValid}, pkPemValid=${pkValid}.`,
     };
   }
-  return { configured: false, method: "NONE" };
+
+  return {
+    configured: false,
+    classification: "ADMIN_CREDENTIALS_MISSING",
+    diagnostic: "No Firebase Admin environment variables detected on server.",
+  };
 }
 
 let adminApp: App;
