@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { PwaCard } from "@/components/directory/PwaCard";
 import { getPwaBySlug, getPwasByCategory } from "@/lib/services/pwa.service";
 
+export const dynamic = "force-dynamic";
+
 interface AppDetailProps {
   params: Promise<{ slug: string }>;
 }
