@@ -13,11 +13,14 @@ import {
   ShieldCheck,
   Sparkles,
   Trophy,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PwaCard } from "@/components/directory/PwaCard";
 import { RatingSection } from "@/components/reviews/RatingSection";
 import { StarRating } from "@/components/reviews/StarRating";
+import { FavoriteButton } from "@/components/pwa/FavoriteButton";
+import { ScreenshotGallery } from "@/components/pwa/ScreenshotGallery";
 import { getPwaBySlug, getPwasByCategory } from "@/lib/services/pwa.service";
 import { getRankedPwas } from "@/lib/services/ranking.service";
 
@@ -99,7 +102,7 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
 
   return (
     <div
-      className="min-h-screen bg-(--paper) text-(--ink) py-12 px-6"
+      className="min-h-screen bg-(--paper) text-(--ink) py-10 px-4 sm:px-6"
       style={
         {
           "--paper": "#F6F4EC",
@@ -114,27 +117,38 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
         } as React.CSSProperties
       }
     >
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto space-y-10">
         {/* Navigation Breadcrumb */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-sm font-medium text-(--body) hover:text-(--ink) transition-colors mb-8 group"
-        >
-          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          <span>Back to directory</span>
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-(--body) hover:text-(--ink) transition-colors group cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+            <span>Back to directory</span>
+          </Link>
 
-        {/* Hero Card */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-8 sm:p-10 shadow-[5px_5px_0_0_var(--line)] mb-12">
+          <Link
+            href={`/?category=${encodeURIComponent(displayCategory)}`}
+            className="text-xs font-mono uppercase tracking-wider text-(--body-dim) hover:text-(--ink) transition-colors"
+          >
+            Category: <span className="font-semibold text-(--ink)">{displayCategory}</span>
+          </Link>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 1. App Detail Hero Section */}
+        {/* ========================================================================= */}
+        <section className="bg-(--card) rounded-2xl border border-(--line) p-6 sm:p-10 shadow-[5px_5px_0_0_var(--line)]">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
             <div className="flex flex-col sm:flex-row items-start gap-6">
-              {/* Icon / Monogram */}
+              {/* App Icon / Monogram */}
               {pwa.iconUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={pwa.iconUrl}
                   alt={`${pwa.title} icon`}
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border border-(--line) object-cover shrink-0 shadow-xs"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border border-(--line) object-cover shrink-0 shadow-xs bg-(--paper)"
                 />
               ) : (
                 <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-(--ink) text-(--paper) font-display text-3xl font-semibold flex items-center justify-center shrink-0 shadow-xs">
@@ -142,16 +156,24 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                 </div>
               )}
 
-              {/* Title & Tagline */}
-              <div>
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className="font-mono text-xs uppercase px-2.5 py-0.5 rounded border border-(--ink)/15 text-(--body) bg-(--paper)">
+              {/* Title, Badges & Metadata */}
+              <div className="space-y-3">
+                {/* Badges Row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs uppercase px-2.5 py-0.5 rounded border border-(--line) text-(--body) bg-(--paper)">
                     {displayCategory}
                   </span>
-                  <span className="flex items-center gap-1 font-mono text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Verified PWA
+
+                  {/* Trust Badge */}
+                  <span
+                    className="flex items-center gap-1 font-mono text-xs text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200"
+                    title="This app has been reviewed and approved for the Likha Apps directory."
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Approved by Likha Apps</span>
                   </span>
+
+                  {/* Ranking Badge (if ranked) */}
                   {rankPosition && (
                     <Link href="/rankings" className="hover:opacity-85 transition-opacity">
                       <span className="flex items-center gap-1 font-mono text-xs text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded border border-amber-300 font-semibold cursor-pointer">
@@ -160,29 +182,68 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                       </span>
                     </Link>
                   )}
-                  {pwa.ratingCount > 0 && pwa.ratingAverage > 0 && (
-                    <span className="flex items-center gap-1 font-mono text-xs text-(--ink) bg-(--ink-soft) px-2 py-0.5 rounded border border-(--line)">
-                      <StarRating value={pwa.ratingAverage} readOnly size="sm" />
-                      <span className="font-semibold">{pwa.ratingAverage.toFixed(1)}</span>
-                      <span className="text-(--body-dim)">({pwa.ratingCount})</span>
-                    </span>
-                  )}
+
+                  {/* Pricing Badge */}
+                  <span className="font-mono text-xs px-2.5 py-0.5 rounded bg-(--ink-soft) text-(--ink) capitalize font-medium">
+                    {pwa.pricing || "Free"}
+                  </span>
                 </div>
 
-                <h1 className="font-display text-3xl sm:text-4xl font-medium text-(--ink) tracking-tight mb-2">
+                {/* Title */}
+                <h1 className="font-display text-3xl sm:text-4xl font-medium text-(--ink) tracking-tight">
                   {pwa.title}
                 </h1>
 
-                <p className="text-base sm:text-lg text-(--body) max-w-xl leading-relaxed">
-                  {pwa.tagline || pwa.description}
-                </p>
+                {/* Developer credit */}
+                <div className="flex items-center gap-2 text-sm text-(--body)">
+                  <span>By <strong className="text-(--ink)">{pwa.developerName || "Independent Developer"}</strong></span>
+                  {pwa.developerWebsite && (
+                    <>
+                      <span>•</span>
+                      <a
+                        href={pwa.developerWebsite}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-(--coral) hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Official Developer Website</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </>
+                  )}
+                </div>
 
+                {/* Rating summary */}
+                {pwa.ratingCount > 0 && pwa.ratingAverage > 0 ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <StarRating value={pwa.ratingAverage} readOnly size="sm" />
+                    <span className="font-mono text-sm font-bold text-(--ink)">
+                      {pwa.ratingAverage.toFixed(1)}
+                    </span>
+                    <span className="font-mono text-xs text-(--body-dim)">
+                      ({pwa.ratingCount} {pwa.ratingCount === 1 ? "review" : "reviews"})
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs font-mono text-(--body-dim) pt-1">
+                    No community ratings yet • Be the first to review
+                  </p>
+                )}
+
+                {/* Tagline */}
+                {pwa.tagline && (
+                  <p className="text-base text-(--body) max-w-xl leading-relaxed pt-1">
+                    {pwa.tagline}
+                  </p>
+                )}
+
+                {/* Tags */}
                 {pwa.tags && pwa.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-4">
+                  <div className="flex flex-wrap gap-1.5 pt-2">
                     {pwa.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="font-mono text-[11px] text-(--body-dim) bg-(--ink-soft) px-2 py-0.5 rounded"
+                        className="font-mono text-[11px] text-(--body-dim) bg-(--paper) border border-(--line) px-2 py-0.5 rounded"
                       >
                         #{tag}
                       </span>
@@ -192,32 +253,52 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
               </div>
             </div>
 
-            {/* Primary Action Button */}
-            <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0">
+            {/* Action Buttons (Open App & Favorite) */}
+            <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0 sm:self-start md:self-auto w-full md:w-48">
               <a
                 href={targetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full"
               >
-                <Button className="w-full sm:w-auto md:w-full h-12 px-8 bg-(--coral) hover:bg-[#e85a3e] text-white text-base font-medium shadow-none transition-colors flex items-center justify-center gap-2">
+                <Button className="w-full h-12 px-6 bg-(--coral) hover:bg-[#e85a3e] text-white text-base font-medium shadow-none transition-colors flex items-center justify-center gap-2 cursor-pointer">
                   <span>Open App</span>
                   <ExternalLink className="w-4 h-4" />
                 </Button>
               </a>
-              <span className="text-[11px] font-mono text-(--body-dim) text-center">
+
+              <FavoriteButton
+                pwaSlug={slug}
+                appTitle={pwa.title}
+                className="w-full"
+              />
+
+              <span className="text-[11px] font-mono text-(--body-dim) text-center block">
                 Runs instantly in browser
               </span>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Content Layout: Main Info (Left) & Metadata Sidebar (Right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          {/* Main Column */}
+        {/* ========================================================================= */}
+        {/* 2. Visual Screenshot Showcase (Prominently above About) */}
+        {/* ========================================================================= */}
+        <ScreenshotGallery
+          screenshots={pwa.screenshots}
+          appTitle={pwa.title}
+          appIcon={pwa.iconUrl}
+          category={displayCategory}
+          tagline={pwa.tagline}
+        />
+
+        {/* ========================================================================= */}
+        {/* 3. Main Content Columns */}
+        {/* ========================================================================= */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 sm:gap-10">
+          {/* Main Left Column (2 cols on lg) */}
           <div className="lg:col-span-2 space-y-10">
             {/* About Section */}
-            <section className="bg-(--card) rounded-xl border border-(--line) p-8 shadow-xs">
+            <section className="bg-(--card) rounded-xl border border-(--line) p-6 sm:p-8 shadow-xs">
               <h2 className="font-display text-2xl font-medium text-(--ink) mb-4 tracking-tight">
                 About this app
               </h2>
@@ -235,28 +316,8 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
               initialCount={pwa.ratingCount || 0}
             />
 
-            {/* Screenshots Gallery (If available) */}
-            {pwa.screenshots && pwa.screenshots.length > 0 && (
-              <section className="bg-(--card) rounded-xl border border-(--line) p-8 shadow-xs">
-                <h2 className="font-display text-2xl font-medium text-(--ink) mb-6 tracking-tight">
-                  Screenshots
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {pwa.screenshots.map((shot, idx) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={idx}
-                      src={shot}
-                      alt={`${pwa.title} screenshot ${idx + 1}`}
-                      className="rounded-lg border border-(--line) w-full h-auto object-cover"
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
             {/* PWA Installation Guidance Section */}
-            <section className="bg-(--card) rounded-xl border border-(--line) p-8 shadow-xs">
+            <section className="bg-(--card) rounded-xl border border-(--line) p-6 sm:p-8 shadow-xs">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="w-5 h-5 text-(--gold)" />
                 <h2 className="font-display text-2xl font-medium text-(--ink) tracking-tight">
@@ -269,50 +330,55 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {/* Android Guidance */}
-                <div className="p-4 rounded-lg bg-(--paper) border border-(--line)">
-                  <div className="flex items-center gap-2 mb-2 font-display font-medium text-(--ink) text-sm">
-                    <Smartphone className="w-4 h-4 text-(--coral)" />
-                    <span>Android</span>
+                <div className="p-4 rounded-lg bg-(--paper) border border-(--line) flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 font-display font-medium text-(--ink) text-sm">
+                      <Smartphone className="w-4 h-4 text-(--coral)" />
+                      <span>Android</span>
+                    </div>
+                    <p className="text-xs text-(--body) leading-relaxed">
+                      Open the app URL in <strong>Chrome</strong> or <strong>Edge</strong>, tap the three dots <span className="font-mono">⋮</span>, and select <strong>&quot;Install app&quot;</strong> or <strong>&quot;Add to Home screen&quot;</strong>.
+                    </p>
                   </div>
-                  <p className="text-xs text-(--body) leading-relaxed">
-                    Open the app URL in <strong>Chrome</strong> or <strong>Edge</strong>, tap the three dots <span className="font-mono">⋮</span>, and select <strong>&quot;Install app&quot;</strong> or <strong>&quot;Add to Home screen&quot;</strong>.
-                  </p>
                 </div>
 
                 {/* iOS / iPadOS Guidance */}
-                <div className="p-4 rounded-lg bg-(--paper) border border-(--line)">
-                  <div className="flex items-center gap-2 mb-2 font-display font-medium text-(--ink) text-sm">
-                    <Apple className="w-4 h-4 text-(--coral)" />
-                    <span>iPhone & iPad</span>
+                <div className="p-4 rounded-lg bg-(--paper) border border-(--line) flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 font-display font-medium text-(--ink) text-sm">
+                      <Apple className="w-4 h-4 text-(--coral)" />
+                      <span>iPhone & iPad</span>
+                    </div>
+                    <p className="text-xs text-(--body) leading-relaxed">
+                      Open the app in <strong>Safari</strong>, tap the <strong>Share</strong> button <span className="font-mono">[⎙]</span>, scroll down, and select <strong>&quot;Add to Home Screen&quot;</strong>.
+                    </p>
                   </div>
-                  <p className="text-xs text-(--body) leading-relaxed">
-                    Open the app in <strong>Safari</strong>, tap the <strong>Share</strong> button <span className="font-mono">[⎙]</span>, scroll down, and select <strong>&quot;Add to Home Screen&quot;</strong>.
-                  </p>
                 </div>
 
                 {/* Desktop Guidance */}
-                <div className="p-4 rounded-lg bg-(--paper) border border-(--line)">
-                  <div className="flex items-center gap-2 mb-2 font-display font-medium text-(--ink) text-sm">
-                    <Laptop className="w-4 h-4 text-(--coral)" />
-                    <span>Desktop</span>
+                <div className="p-4 rounded-lg bg-(--paper) border border-(--line) flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 font-display font-medium text-(--ink) text-sm">
+                      <Laptop className="w-4 h-4 text-(--coral)" />
+                      <span>Desktop</span>
+                    </div>
+                    <p className="text-xs text-(--body) leading-relaxed">
+                      Open the app in <strong>Chrome</strong> or <strong>Edge</strong>, and click the <strong>Install icon</strong> in the address bar.
+                    </p>
                   </div>
-                  <p className="text-xs text-(--body) leading-relaxed">
-                    Open the app in <strong>Chrome</strong> or <strong>Edge</strong>, and click the <strong>Install icon</strong> in the right side of the address bar.
-                  </p>
                 </div>
               </div>
             </section>
           </div>
 
-          {/* Sidebar Column */}
+          {/* Sidebar Column (1 col on lg) */}
           <div className="space-y-6">
-            {/* Metadata Card */}
-            <div className="bg-(--card) rounded-xl border border-(--line) p-6 shadow-xs space-y-5">
+            {/* Publisher / Developer Card */}
+            <div className="bg-(--card) rounded-xl border border-(--line) p-6 shadow-xs space-y-4">
               <h3 className="font-mono text-xs uppercase tracking-wider text-(--body-dim) pb-2 border-b border-(--line)">
-                Listing Information
+                Publisher Information
               </h3>
 
-              {/* Developer */}
               <div>
                 <span className="text-xs font-mono text-(--body-dim) block mb-1">
                   Developer
@@ -320,20 +386,25 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                 <p className="text-sm font-medium text-(--ink)">
                   {pwa.developerName || "Independent Developer"}
                 </p>
-                {pwa.developerWebsite && (
+              </div>
+
+              {pwa.developerWebsite && (
+                <div>
+                  <span className="text-xs font-mono text-(--body-dim) block mb-1">
+                    Website
+                  </span>
                   <a
                     href={pwa.developerWebsite}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-(--coral) hover:underline inline-flex items-center gap-1 mt-0.5"
+                    className="text-xs text-(--coral) hover:underline inline-flex items-center gap-1 cursor-pointer truncate max-w-full"
                   >
-                    <span>Developer Website</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <span>Official Developer Website</span>
+                    <ExternalLink className="w-3 h-3 shrink-0" />
                   </a>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Category */}
               <div>
                 <span className="text-xs font-mono text-(--body-dim) block mb-1">
                   Category
@@ -344,20 +415,37 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                 </div>
               </div>
 
-              {/* Pricing */}
               <div>
                 <span className="text-xs font-mono text-(--body-dim) block mb-1">
-                  Pricing
+                  Pricing Model
                 </span>
-                <span className="font-mono text-xs px-2.5 py-1 rounded bg-(--ink-soft) text-(--ink) capitalize font-medium">
+                <span className="font-mono text-xs px-2.5 py-1 rounded bg-(--paper) border border-(--line) text-(--ink) capitalize font-medium inline-block">
                   {pwa.pricing || "Free"}
                 </span>
               </div>
 
-              {/* Host URL */}
+              {formattedDate && (
+                <div>
+                  <span className="text-xs font-mono text-(--body-dim) block mb-1">
+                    Published Date
+                  </span>
+                  <div className="flex items-center gap-1.5 text-xs font-mono text-(--body)">
+                    <Calendar className="w-3.5 h-3.5 text-(--body-dim)" />
+                    <span>{formattedDate}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Technical App Information Card */}
+            <div className="bg-(--card) rounded-xl border border-(--line) p-6 shadow-xs space-y-4">
+              <h3 className="font-mono text-xs uppercase tracking-wider text-(--body-dim) pb-2 border-b border-(--line)">
+                App Specifications
+              </h3>
+
               <div>
                 <span className="text-xs font-mono text-(--body-dim) block mb-1">
-                  Website URL
+                  Web Application URL
                 </span>
                 <a
                   href={targetUrl}
@@ -370,27 +458,63 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                 </a>
               </div>
 
-              {/* Date */}
-              {formattedDate && (
-                <div>
-                  <span className="text-xs font-mono text-(--body-dim) block mb-1">
-                    Listed On
-                  </span>
-                  <div className="flex items-center gap-1.5 text-xs font-mono text-(--body)">
-                    <Calendar className="w-3.5 h-3.5 text-(--body-dim)" />
-                    <span>{formattedDate}</span>
-                  </div>
+              <div>
+                <span className="text-xs font-mono text-(--body-dim) block mb-1">
+                  Manifest Standards
+                </span>
+                <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>W3C Web App Manifest Compliant</span>
                 </div>
-              )}
+              </div>
+
+              <div>
+                <span className="text-xs font-mono text-(--body-dim) block mb-1">
+                  Capabilities
+                </span>
+                <ul className="space-y-1 text-xs text-(--body)">
+                  <li className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-(--coral)" />
+                    <span>Runs across iOS, Android, macOS & Windows</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-(--coral)" />
+                    <span>No app store downloads or packaging required</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-(--coral)" />
+                    <span>Instant automatic updates on every visit</span>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* ========================================================================= */}
+        {/* 4. More in Category Section */}
+        {/* ========================================================================= */}
         {relatedApps.length > 0 && (
-          <div className="mt-16 pt-12 border-t border-(--line)">
-            <h2 className="font-display text-2xl font-medium text-(--ink) mb-6 tracking-tight">
-              More in {displayCategory}
-            </h2>
+          <div className="pt-12 border-t border-(--line)">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="font-display text-2xl font-medium text-(--ink) tracking-tight">
+                  More in {displayCategory}
+                </h2>
+                <p className="text-xs text-(--body) mt-0.5">
+                  Explore other approved progressive web apps in this category
+                </p>
+              </div>
+
+              <Link
+                href={`/?category=${encodeURIComponent(displayCategory)}`}
+                className="text-xs font-mono text-(--coral) hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>View all</span>
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
               {relatedApps.map((item) => (
                 <PwaCard key={item.id || item.slug} app={item} />
