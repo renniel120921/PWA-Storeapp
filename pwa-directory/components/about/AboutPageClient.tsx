@@ -13,6 +13,7 @@ import {
   Bell,
   Sparkles,
   ArrowRight,
+  ExternalLink,
   CheckCircle2,
   Users,
   Code2,
@@ -22,6 +23,7 @@ import {
   X,
   Heart,
   HelpCircle,
+  Lightbulb,
 } from "lucide-react";
 
 const FAQ_ITEMS = [
@@ -731,13 +733,13 @@ export function AboutPageClient() {
       </section>
 
       {/* --------------------------------------------------------------------- */}
-      {/* 7. Product Philosophy & Story                                         */}
+      {/* 7. Product Philosophy & Where the Idea Started                        */}
       {/* --------------------------------------------------------------------- */}
       <section className="py-20 px-6 bg-(--paper) border-t border-(--line)">
-        <div className="max-w-4xl mx-auto space-y-10">
+        <div className="max-w-4xl mx-auto space-y-12">
           <div className="space-y-4">
             <span className="font-mono text-xs uppercase tracking-wider text-(--coral) font-semibold">
-              Our Philosophy
+              Our Philosophy & Story
             </span>
             <h2 className="font-display text-3xl sm:text-4xl font-medium text-(--ink) tracking-tight">
               Built on the belief that the open web is the best app platform.
@@ -754,6 +756,58 @@ export function AboutPageClient() {
             <p>
               We built Likha Apps to celebrate this craftsmanship. Our commitment is to remain focused on discoverability, transparent community ratings, and empowering makers to reach users directly.
             </p>
+          </div>
+
+          {/* Where the Idea Started / Personal Inspiration Card */}
+          <div className="bg-(--card) rounded-2xl border border-(--line) p-8 shadow-xs space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-(--ink)/5 text-(--coral) flex items-center justify-center">
+                <Lightbulb className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="font-mono text-xs uppercase tracking-wider text-(--coral) font-semibold block">
+                  Where the Idea Started
+                </span>
+                <h3 className="font-display text-xl font-medium text-(--ink)">
+                  Projects That Inspired Likha Apps
+                </h3>
+              </div>
+            </div>
+
+            <p className="text-sm sm:text-base text-(--body) leading-relaxed">
+              Before building Likha Apps, I also worked on projects like <strong>SmartBasura</strong>, a capstone project focused on household waste pickup reminders and waste-sorting guidance for local barangays.
+            </p>
+
+            <p className="text-sm sm:text-base text-(--body) leading-relaxed">
+              Building and deploying practical, community-oriented web tools highlighted the need for a dedicated space where independent web software can be easily shared, tested, and discovered by real users.
+            </p>
+
+            {/* SmartBasura Reference Card (Non-Marketplace Display) */}
+            <div className="p-5 rounded-xl bg-(--paper) border border-(--line) flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-display font-medium text-base text-(--ink)">
+                    SmartBasura
+                  </h4>
+                  <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-(--ink-soft) text-(--ink) font-medium">
+                    Previous Capstone Project
+                  </span>
+                </div>
+                <p className="text-xs text-(--body)">
+                  Household waste pickup reminders and sorting guide for local barangays.
+                </p>
+              </div>
+
+              <a
+                href="https://smartbasura.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-mono text-(--coral) hover:underline cursor-pointer shrink-0"
+              >
+                <span>Visit Project</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">

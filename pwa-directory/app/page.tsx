@@ -802,21 +802,20 @@ export default function Home() {
               <div className="hero-enter-delay-1 catalog-card w-full max-w-sm bg-(--card) text-(--ink) rounded-lg border border-(--line) p-7 -rotate-2">
                 <div className="flex justify-between items-start mb-6">
                   <span className="font-mono text-xs uppercase tracking-wide text-(--body-dim)">
-                    entry no. 0142
+                    sample listing
                   </span>
                   <span className="font-mono text-xs px-2 py-0.5 rounded border border-(--ink)/15 text-(--body)">
-                    tools
+                    productivity
                   </span>
                 </div>
                 <h3 className="font-display text-3xl font-medium mb-3">
-                  SmartBasura
+                  DevNotes Web
                 </h3>
                 <p className="text-sm text-(--body) leading-relaxed mb-6">
-                  Household waste pickup reminders and sorting guide for
-                  local barangays.
+                  Lightweight browser scratchpad with markdown formatting, local encryption, and instant PWA install.
                 </p>
                 <div className="flex items-center justify-between font-mono text-xs text-(--body-dim) border-t border-(--line) pt-4">
-                  <span>smartbasura.app</span>
+                  <span>devnotes.app</span>
                   <ExternalLink className="w-4 h-4" />
                 </div>
               </div>

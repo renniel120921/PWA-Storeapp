@@ -664,7 +664,7 @@ export default function SubmitPage() {
                     type="text"
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="e.g. SmartBasura"
+                    placeholder="e.g. FocusTimer or DevNotes"
                     className="w-full h-11 px-3.5 rounded-md border border-(--line) bg-(--card) text-sm outline-none focus:border-(--ink) focus:ring-1 focus:ring-(--ink)"
                   />
                   {fieldErrors.title && (
