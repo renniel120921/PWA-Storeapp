@@ -5,9 +5,6 @@ import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getDeveloperDashboardApps,
-  deleteDraftSubmission,
-  cancelPendingSubmission,
-  removeApprovedPwaListing,
   type DeveloperAppItem,
 } from "@/lib/services/pwa.service";
 import {
@@ -15,7 +12,6 @@ import {
   ArrowRight,
   ExternalLink,
   Eye,
-  Trash2,
   Lock,
   Layers,
   Clock,
@@ -25,20 +21,12 @@ import {
   Sparkles,
   RefreshCw,
   FolderOpen,
-  XCircle,
-  ShieldOff,
-  Info,
+  Compass,
+  Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { PwaStatus } from "@/types";
-import {
-  showConfirmDialog,
-  showSuccessAlert,
-  showErrorAlert,
-  showInfoAlert,
-  showLoadingAlert,
-} from "@/lib/utils/swal";
 
 export default function DeveloperDashboardPage() {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -46,8 +34,6 @@ export default function DeveloperDashboardPage() {
   const [items, setItems] = useState<DeveloperAppItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<string>("all");
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Load Developer Data cleanly using deduplicated aggregation
@@ -73,7 +59,7 @@ export default function DeveloperDashboardPage() {
         if (!isCancelled) {
           console.error("Failed to load developer dashboard data:", err);
           setFetchError(
-            "Unable to load your applications. Please check your connection and try again."
+            "Unable to load your dashboard data. Please check your connection and try again."
           );
         }
       } finally {
@@ -106,156 +92,10 @@ export default function DeveloperDashboardPage() {
     return { total, pending, approved, drafts, rejected, suspended };
   }, [items]);
 
-  // Filtered list by status tab
-  const filteredItems = useMemo(() => {
-    if (activeFilter === "all") return items;
-    return items.filter((i) => i.status.toLowerCase() === activeFilter.toLowerCase());
-  }, [items, activeFilter]);
-
-  // Delete Draft Handler with SweetAlert2
-  const handleDeleteDraft = async (submissionId: string, title: string) => {
-    if (!user?.uid || actionLoadingId) return;
-
-    const confirmed = await showConfirmDialog({
-      title: "Delete this draft?",
-      text: `Are you sure you want to delete the draft for "${title}"? This cannot be undone.`,
-      confirmText: "Delete Draft",
-      cancelText: "Cancel",
-      isDestructive: true,
-    });
-
-    if (!confirmed) return;
-
-    setActionLoadingId(submissionId);
-    showLoadingAlert({
-      title: "Deleting Draft...",
-      text: "Removing draft submission.",
-    });
-
-    try {
-      const res = await deleteDraftSubmission(submissionId, user.uid);
-      if (res.ok) {
-        setItems((prev) => prev.filter((i) => i.id !== submissionId));
-        await showSuccessAlert({
-          title: "Draft deleted",
-          text: `"${title}" has been removed.`,
-          timer: 1500,
-        });
-      } else {
-        await showErrorAlert({
-          title: "Action failed",
-          text: res.error || "Could not delete draft.",
-        });
-      }
-    } catch (err) {
-      await showErrorAlert({
-        title: "Error",
-        error: err,
-      });
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  // Cancel Pending Submission Handler
-  const handleCancelPending = async (submissionId: string, title: string) => {
-    if (!user?.uid || actionLoadingId) return;
-
-    const confirmed = await showConfirmDialog({
-      title: "Cancel submission?",
-      text: `Withdraw "${title}" from the moderation queue?`,
-      confirmText: "Cancel Submission",
-      cancelText: "Keep in Queue",
-      isDestructive: true,
-    });
-
-    if (!confirmed) return;
-
-    setActionLoadingId(submissionId);
-    showLoadingAlert({
-      title: "Cancelling Submission...",
-      text: "Withdrawing submission from moderation queue.",
-    });
-
-    try {
-      const res = await cancelPendingSubmission(submissionId, user.uid);
-      if (res.ok) {
-        setItems((prev) => prev.filter((i) => i.id !== submissionId));
-        await showSuccessAlert({
-          title: "Submission cancelled",
-          text: `"${title}" has been withdrawn from the review queue.`,
-          timer: 1800,
-        });
-      } else {
-        await showErrorAlert({
-          title: "Action failed",
-          text: res.error || "Could not cancel submission.",
-        });
-      }
-    } catch (err) {
-      await showErrorAlert({
-        title: "Error",
-        error: err,
-      });
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  // Remove / Unpublish Approved Listing Handler
-  const handleRemoveListing = async (slug: string, title: string) => {
-    if (!user || actionLoadingId) return;
-
-    const confirmed = await showConfirmDialog({
-      title: "Remove this listing?",
-      text: "This app will no longer appear in the public directory. Your submission history will remain available.",
-      confirmText: "Remove Listing",
-      cancelText: "Cancel",
-      isDestructive: true,
-    });
-
-    if (!confirmed) return;
-
-    setActionLoadingId(slug);
-    showLoadingAlert({
-      title: "Unpublishing Listing...",
-      text: "Removing app from the live marketplace.",
-    });
-
-    try {
-      const idToken = await user.getIdToken();
-      const res = await removeApprovedPwaListing({ slug, idToken });
-
-      if (res.ok) {
-        await showSuccessAlert({
-          title: "Listing removed",
-          text: `"${title}" has been unlisted from the public directory.`,
-          timer: 2000,
-        });
-        setRefreshKey((k) => k + 1);
-      } else {
-        await showErrorAlert({
-          title: "Action failed",
-          text: res.error || "Could not remove listing.",
-        });
-      }
-    } catch (err) {
-      await showErrorAlert({
-        title: "Error",
-        error: err,
-      });
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  // View Rejection Reason Modal
-  const handleViewRejectionReason = (title: string, reason?: string) => {
-    showInfoAlert({
-      title: `Moderation Feedback: ${title}`,
-      text: reason || "No detailed moderation notes were provided.",
-    });
-  };
+  // Recent apps (up to 4 items)
+  const recentApps = useMemo(() => {
+    return items.slice(0, 4);
+  }, [items]);
 
   // Auth Loading
   if (authLoading) {
@@ -281,7 +121,7 @@ export default function DeveloperDashboardPage() {
               Developer Portal
             </h1>
             <p className="text-xs text-(--body) leading-relaxed">
-              Please log in with your developer account to manage your listings.
+              Please log in with your developer account to access your workspace.
             </p>
           </div>
 
@@ -308,12 +148,22 @@ export default function DeveloperDashboardPage() {
           <h1 className="font-display text-2xl sm:text-3xl font-medium text-(--ink) tracking-tight">
             Welcome back, {profile?.fullName || user?.displayName || "Developer"}
           </h1>
-          <p className="text-xs text-(--body) mt-0.5">
-            Manage your progressive web applications, review statuses, and track live listings.
+          <p className="text-xs sm:text-sm text-(--body) mt-0.5">
+            Overview of your progressive web apps, publishing metrics, and review statuses.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <Link href="/dashboard/apps">
+            <Button
+              variant="outline"
+              className="h-10 px-4 border-(--line) text-(--ink) bg-(--card) hover:bg-(--ink-soft) font-medium text-xs rounded-md shadow-none flex items-center gap-1.5 cursor-pointer"
+            >
+              <Layers className="w-4 h-4 text-(--coral)" />
+              <span>My Apps</span>
+            </Button>
+          </Link>
+
           <Link href="/submit">
             <Button className="h-10 px-5 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-xs rounded-md shadow-none flex items-center gap-1.5 cursor-pointer">
               <Plus className="w-4 h-4" />
@@ -336,340 +186,290 @@ export default function DeveloperDashboardPage() {
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         {/* Total Apps */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
-          <div className="flex items-center justify-between text-(--body-dim) mb-2">
-            <span className="font-mono text-xs uppercase tracking-wider">Total Apps</span>
-            <Layers className="w-4 h-4" />
+        <Link href="/dashboard/apps" className="block group">
+          <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)] group-hover:border-(--ink)/40 group-hover:shadow-[4px_4px_0_0_var(--ink)] transition-all">
+            <div className="flex items-center justify-between text-(--body-dim) mb-2">
+              <span className="font-mono text-xs uppercase tracking-wider">Total Apps</span>
+              <Layers className="w-4 h-4" />
+            </div>
+            <div className="font-display text-2xl sm:text-3xl font-bold text-(--ink)">
+              {loading ? "-" : stats.total}
+            </div>
+            <p className="text-[11px] font-mono text-(--body-dim) mt-1">Across all states</p>
           </div>
-          <div className="font-display text-2xl sm:text-3xl font-bold text-(--ink)">
-            {loading ? "-" : stats.total}
-          </div>
-          <p className="text-[11px] font-mono text-(--body-dim) mt-1">Across all states</p>
-        </div>
+        </Link>
 
         {/* Live on Directory */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
-          <div className="flex items-center justify-between text-emerald-700 mb-2">
-            <span className="font-mono text-xs uppercase tracking-wider">Approved</span>
-            <CheckCircle2 className="w-4 h-4" />
+        <Link href="/dashboard/apps" className="block group">
+          <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)] group-hover:border-(--ink)/40 group-hover:shadow-[4px_4px_0_0_var(--ink)] transition-all">
+            <div className="flex items-center justify-between text-emerald-700 mb-2">
+              <span className="font-mono text-xs uppercase tracking-wider">Approved</span>
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div className="font-display text-2xl sm:text-3xl font-bold text-emerald-800">
+              {loading ? "-" : stats.approved}
+            </div>
+            <p className="text-[11px] font-mono text-emerald-700 mt-1">Published live</p>
           </div>
-          <div className="font-display text-2xl sm:text-3xl font-bold text-emerald-800">
-            {loading ? "-" : stats.approved}
-          </div>
-          <p className="text-[11px] font-mono text-emerald-700 mt-1">Published live</p>
-        </div>
+        </Link>
 
         {/* In Review */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
-          <div className="flex items-center justify-between text-amber-700 mb-2">
-            <span className="font-mono text-xs uppercase tracking-wider">In Review</span>
-            <Clock className="w-4 h-4" />
+        <Link href="/dashboard/apps" className="block group">
+          <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)] group-hover:border-(--ink)/40 group-hover:shadow-[4px_4px_0_0_var(--ink)] transition-all">
+            <div className="flex items-center justify-between text-amber-700 mb-2">
+              <span className="font-mono text-xs uppercase tracking-wider">In Review</span>
+              <Clock className="w-4 h-4" />
+            </div>
+            <div className="font-display text-2xl sm:text-3xl font-bold text-amber-800">
+              {loading ? "-" : stats.pending}
+            </div>
+            <p className="text-[11px] font-mono text-amber-700 mt-1">Pending approval</p>
           </div>
-          <div className="font-display text-2xl sm:text-3xl font-bold text-amber-800">
-            {loading ? "-" : stats.pending}
-          </div>
-          <p className="text-[11px] font-mono text-amber-700 mt-1">Pending approval</p>
-        </div>
+        </Link>
 
         {/* Drafts */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
-          <div className="flex items-center justify-between text-(--body-dim) mb-2">
-            <span className="font-mono text-xs uppercase tracking-wider">Drafts</span>
-            <Sparkles className="w-4 h-4" />
+        <Link href="/dashboard/apps" className="block group">
+          <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)] group-hover:border-(--ink)/40 group-hover:shadow-[4px_4px_0_0_var(--ink)] transition-all">
+            <div className="flex items-center justify-between text-(--body-dim) mb-2">
+              <span className="font-mono text-xs uppercase tracking-wider">Drafts</span>
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="font-display text-2xl sm:text-3xl font-bold text-(--ink)">
+              {loading ? "-" : stats.drafts}
+            </div>
+            <p className="text-[11px] font-mono text-(--body-dim) mt-1">Unsubmitted</p>
           </div>
-          <div className="font-display text-2xl sm:text-3xl font-bold text-(--ink)">
-            {loading ? "-" : stats.drafts}
-          </div>
-          <p className="text-[11px] font-mono text-(--body-dim) mt-1">Unsubmitted</p>
-        </div>
+        </Link>
 
         {/* Rejected */}
-        <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)]">
-          <div className="flex items-center justify-between text-rose-700 mb-2">
-            <span className="font-mono text-xs uppercase tracking-wider">Rejected</span>
-            <AlertTriangle className="w-4 h-4" />
+        <Link href="/dashboard/apps" className="block group">
+          <div className="bg-(--card) rounded-xl border border-(--line) p-4 sm:p-5 shadow-[3px_3px_0_0_var(--line)] group-hover:border-(--ink)/40 group-hover:shadow-[4px_4px_0_0_var(--ink)] transition-all">
+            <div className="flex items-center justify-between text-rose-700 mb-2">
+              <span className="font-mono text-xs uppercase tracking-wider">Rejected</span>
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div className="font-display text-2xl sm:text-3xl font-bold text-rose-800">
+              {loading ? "-" : stats.rejected}
+            </div>
+            <p className="text-[11px] font-mono text-rose-700 mt-1">Needs correction</p>
           </div>
-          <div className="font-display text-2xl sm:text-3xl font-bold text-rose-800">
-            {loading ? "-" : stats.rejected}
-          </div>
-          <p className="text-[11px] font-mono text-rose-700 mt-1">Needs correction</p>
-        </div>
+        </Link>
       </div>
 
-      {/* Applications Section Header & Filter Tabs */}
-      <div id="apps" className="space-y-4 pt-2">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-xl font-medium text-(--ink)">My Applications</h2>
-            <p className="text-xs text-(--body)">
-              View live listings, continue drafts, and track moderation progress.
-            </p>
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-(--ink)/5 rounded-lg border border-(--line)">
-            {[
-              { id: "all", label: "All" },
-              { id: "approved", label: "Approved" },
-              { id: "pending", label: "Pending" },
-              { id: "draft", label: "Drafts" },
-              { id: "rejected", label: "Rejected" },
-              { id: "suspended", label: "Suspended" },
-            ].map((tab) => {
-              const isActive = activeFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveFilter(tab.id)}
-                  className={`px-3 py-1 rounded-md text-xs font-mono font-medium transition-all border ${
-                    isActive
-                      ? "bg-(--ink) text-(--paper) border-(--ink) shadow-[2px_2px_0_0_var(--coral)]"
-                      : "bg-(--card) text-(--body) border-(--line) hover:border-(--ink)/40 hover:text-(--ink)"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Loading Skeleton */}
-        {loading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-28 rounded-xl bg-(--card) border border-(--line) p-6 animate-pulse"
-              />
-            ))}
-          </div>
-        ) : fetchError ? (
-          /* Error State */
-          <div className="p-8 rounded-xl bg-(--card) border border-(--line) text-center space-y-4 shadow-[3px_3px_0_0_var(--line)]">
-            <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
-            <p className="text-sm text-(--body)">{fetchError}</p>
-            <Button
-              onClick={handleRetry}
-              variant="outline"
-              className="border-(--line) text-xs font-mono"
-            >
-              <RotateCcw className="w-3.5 h-3.5 mr-2" />
-              Retry
-            </Button>
-          </div>
-        ) : filteredItems.length === 0 ? (
-          /* Empty State */
-          <div className="py-16 rounded-xl bg-(--card) border-2 border-dashed border-(--line) text-center p-8 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-(--ink)/5 flex items-center justify-center mx-auto text-(--body)">
-              <FolderOpen className="w-6 h-6" />
-            </div>
+      {/* Main Grid: Recent Apps (Left) & Publisher Workflow (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left 2 Cols: Recent Applications Preview */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-display text-lg font-medium text-(--ink) mb-1">
-                {activeFilter === "all"
-                  ? "You have not submitted an app yet."
-                  : `No applications found with status "${activeFilter}".`}
-              </h3>
-              <p className="text-xs text-(--body) max-w-sm mx-auto leading-relaxed">
-                Publish your progressive web app to reach users across mobile and desktop.
-              </p>
+              <h2 className="font-display text-xl font-medium text-(--ink)">Recent Applications</h2>
+              <p className="text-xs text-(--body)">Your latest published and submitted web apps.</p>
             </div>
 
-            {activeFilter === "all" && (
-              <Link href="/submit">
-                <Button className="h-10 px-5 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-xs rounded-md shadow-none inline-flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" />
-                  <span>Submit Your First App</span>
-                </Button>
+            {items.length > 0 && (
+              <Link
+                href="/dashboard/apps"
+                className="text-xs font-mono text-(--coral) hover:underline flex items-center gap-1"
+              >
+                <span>View all ({items.length})</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             )}
           </div>
-        ) : (
-          /* Application Cards List */
-          <div className="space-y-3.5">
-            {filteredItems.map((app) => (
-              <div
-                key={app.id}
-                className="bg-(--card) rounded-xl border border-(--line) p-5 sm:p-6 shadow-[3px_3px_0_0_var(--line)] hover:border-(--ink)/40 transition-all flex flex-col md:flex-row md:items-center justify-between gap-5"
-              >
-                <div className="flex items-start gap-4 flex-1 min-w-0">
-                  {/* App Icon */}
-                  {app.iconUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={app.iconUrl}
-                      alt={`${app.title} icon`}
-                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border border-(--line) object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-(--ink) text-(--paper) font-display text-xl font-bold flex items-center justify-center shrink-0 shadow-[2px_2px_0_0_var(--coral)]">
-                      {app.title ? app.title.charAt(0).toUpperCase() : "P"}
-                    </div>
-                  )}
 
-                  {/* App Identity & Status */}
-                  <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-display text-base sm:text-lg font-medium text-(--ink) truncate">
-                        {app.title}
-                      </h3>
-                      <StatusBadge status={app.status as PwaStatus} />
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded border border-(--line) text-(--body) bg-(--paper) capitalize">
-                        {app.primaryCategory}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-(--body) line-clamp-2 max-w-xl">
-                      {app.tagline || app.description || "No description provided."}
-                    </p>
-
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono text-(--body-dim) pt-0.5">
-                      <span className="truncate max-w-[220px]">{app.appUrl}</span>
-                      {app.status === "approved" && (
-                        <span className="text-emerald-700 font-semibold">• Live on Directory</span>
-                      )}
-                      {app.status === "suspended" && (
-                        <span className="text-amber-700 font-semibold">• Unlisted from Directory</span>
-                      )}
-                    </div>
-
-                    {/* Rejection Notes Callout if rejected */}
-                    {app.status === "rejected" && app.rejectionReason && (
-                      <div className="mt-2.5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">
-                        <strong>Moderation Notes:</strong> {app.rejectionReason}
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-20 rounded-xl bg-(--card) border border-(--line) p-4 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : fetchError ? (
+            <div className="p-6 rounded-xl bg-(--card) border border-(--line) text-center space-y-3">
+              <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
+              <p className="text-xs text-(--body)">{fetchError}</p>
+              <Button onClick={handleRetry} variant="outline" className="text-xs font-mono h-8">
+                <RotateCcw className="w-3 h-3 mr-1.5" />
+                Retry
+              </Button>
+            </div>
+          ) : recentApps.length === 0 ? (
+            <div className="py-12 rounded-xl bg-(--card) border-2 border-dashed border-(--line) text-center p-6 space-y-3">
+              <FolderOpen className="w-8 h-8 text-(--body-dim) mx-auto" />
+              <h3 className="font-display text-base font-medium text-(--ink)">No apps listed yet</h3>
+              <p className="text-xs text-(--body) max-w-xs mx-auto">
+                Submit your progressive web app to get listed in the Likha Apps public marketplace.
+              </p>
+              <Link href="/submit">
+                <Button className="h-9 px-4 bg-(--coral) hover:bg-[#e85a3e] text-white text-xs font-medium rounded-md shadow-none inline-flex items-center gap-1.5 mt-2">
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Submit App</span>
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentApps.map((app) => (
+                <div
+                  key={app.id}
+                  className="bg-(--card) rounded-xl border border-(--line) p-4 shadow-[2px_2px_0_0_var(--line)] hover:border-(--ink)/40 transition-all flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    {/* App Icon */}
+                    {app.iconUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={app.iconUrl}
+                        alt={`${app.title} icon`}
+                        className="w-11 h-11 rounded-xl border border-(--line) object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-(--ink) text-(--paper) font-display text-lg font-bold flex items-center justify-center shrink-0 shadow-[2px_2px_0_0_var(--coral)]">
+                        {app.title ? app.title.charAt(0).toUpperCase() : "P"}
                       </div>
                     )}
-                  </div>
-                </div>
 
-                {/* Status-Specific Actions */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-(--line)">
-                  {/* APPROVED ACTIONS */}
-                  {app.status === "approved" && (
-                    <>
-                      {app.slug && (
-                        <Link href={`/apps/${app.slug}`}>
-                          <Button
-                            variant="outline"
-                            className="h-9 px-3 border-(--line) text-(--ink) hover:bg-(--ink-soft) text-xs font-mono"
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-1.5" />
-                            Directory Listing
-                          </Button>
-                        </Link>
-                      )}
-
-                      {app.appUrl && (
-                        <a
-                          href={app.appUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex"
-                        >
-                          <Button
-                            variant="outline"
-                            className="h-9 px-3 border-(--line) text-(--body) hover:text-(--ink) text-xs font-mono"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                            Launch App
-                          </Button>
-                        </a>
-                      )}
-
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          handleRemoveListing(app.slug || app.id, app.title)
-                        }
-                        disabled={actionLoadingId === (app.slug || app.id)}
-                        className="h-9 px-3 text-rose-700 hover:text-rose-800 hover:bg-rose-50 text-xs font-mono"
-                        title="Unpublish this app from the public directory"
-                      >
-                        <ShieldOff className="w-3.5 h-3.5 mr-1.5" />
-                        <span>Remove Listing</span>
-                      </Button>
-                    </>
-                  )}
-
-                  {/* DRAFT ACTIONS */}
-                  {app.status === "draft" && (
-                    <>
-                      <Link href="/submit">
-                        <Button className="h-9 px-3.5 bg-(--ink) text-(--paper) hover:bg-[#1a3d40] text-xs font-mono">
-                          <span>Continue Draft</span>
-                          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                        </Button>
-                      </Link>
-
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleDeleteDraft(app.id, app.title)}
-                        disabled={actionLoadingId === app.id}
-                        className="h-9 px-2.5 text-rose-700 hover:text-rose-800 hover:bg-rose-50 text-xs font-mono"
-                        title="Delete draft"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </>
-                  )}
-
-                  {/* PENDING ACTIONS */}
-                  {app.status === "pending" && (
-                    <>
-                      <div className="text-[11px] font-mono text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
-                        In Review Queue
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-display text-sm font-medium text-(--ink) truncate">
+                          {app.title}
+                        </h4>
+                        <StatusBadge status={app.status as PwaStatus} />
                       </div>
+                      <p className="text-[11px] font-mono text-(--body-dim) truncate">
+                        {app.appUrl}
+                      </p>
+                    </div>
+                  </div>
 
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleCancelPending(app.id, app.title)}
-                        disabled={actionLoadingId === app.id}
-                        className="h-9 px-3 text-rose-700 hover:text-rose-800 hover:bg-rose-50 text-xs font-mono"
-                        title="Withdraw submission from moderation queue"
-                      >
-                        <XCircle className="w-3.5 h-3.5 mr-1.5" />
-                        <span>Cancel Submission</span>
-                      </Button>
-                    </>
-                  )}
-
-                  {/* REJECTED ACTIONS */}
-                  {app.status === "rejected" && (
-                    <>
-                      {app.rejectionReason && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {app.status === "approved" && app.slug && (
+                      <Link href={`/apps/${app.slug}`}>
                         <Button
                           variant="outline"
-                          onClick={() =>
-                            handleViewRejectionReason(app.title, app.rejectionReason)
-                          }
-                          className="h-9 px-3 border-(--line) text-(--body) hover:text-(--ink) text-xs font-mono"
+                          className="h-8 px-2.5 border-(--line) text-(--ink) hover:bg-(--ink-soft) text-xs font-mono"
                         >
-                          <Info className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
-                          View Reason
-                        </Button>
-                      )}
-
-                      <Link href="/submit">
-                        <Button className="h-9 px-3.5 bg-(--coral) hover:bg-[#e85a3e] text-white text-xs font-mono">
-                          <span>Fix & Resubmit</span>
-                          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                          <Eye className="w-3.5 h-3.5 mr-1" />
+                          View
                         </Button>
                       </Link>
-                    </>
-                  )}
+                    )}
 
-                  {/* SUSPENDED ACTIONS */}
-                  {app.status === "suspended" && (
-                    <div className="text-[11px] font-mono text-stone-700 bg-stone-100 px-3 py-1.5 rounded-lg border border-stone-300">
-                      Listing Unpublished
-                    </div>
-                  )}
+                    {app.status === "draft" && (
+                      <Link href="/submit">
+                        <Button className="h-8 px-2.5 bg-(--ink) text-(--paper) hover:bg-[#1a3d40] text-xs font-mono">
+                          Continue
+                          <ArrowRight className="w-3 h-3 ml-1" />
+                        </Button>
+                      </Link>
+                    )}
+
+                    <Link href="/dashboard/apps">
+                      <Button
+                        variant="ghost"
+                        className="h-8 px-2 text-(--body-dim) hover:text-(--ink) text-xs font-mono"
+                        title="Manage in My Apps"
+                      >
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
+              ))}
+
+              <div className="pt-2 text-center">
+                <Link href="/dashboard/apps">
+                  <Button
+                    variant="outline"
+                    className="w-full h-10 border-(--line) text-(--ink) bg-(--card) hover:bg-(--ink-soft) font-medium text-xs font-mono"
+                  >
+                    <span>Manage all {items.length} applications in My Apps</span>
+                    <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                  </Button>
+                </Link>
               </div>
-            ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right Col: Publisher Guide & Actions */}
+        <div className="space-y-6">
+          {/* Quick Actions Card */}
+          <div className="bg-(--card) rounded-xl border border-(--line) p-5 shadow-[3px_3px_0_0_var(--line)] space-y-4">
+            <h3 className="font-mono text-xs uppercase tracking-wider text-(--body-dim) pb-2 border-b border-(--line)">
+              Developer Actions
+            </h3>
+
+            <div className="space-y-2.5">
+              <Link href="/submit" className="block">
+                <div className="p-3 rounded-lg border border-(--line) bg-(--paper) hover:border-(--ink)/40 hover:bg-(--ink-soft) transition-all flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Rocket className="w-4 h-4 text-(--coral)" />
+                    <div>
+                      <p className="text-xs font-semibold text-(--ink)">Submit New PWA</p>
+                      <p className="text-[11px] text-(--body-dim)">Start the 5-step verification wizard</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-(--body-dim)" />
+                </div>
+              </Link>
+
+              <Link href="/dashboard/apps" className="block">
+                <div className="p-3 rounded-lg border border-(--line) bg-(--paper) hover:border-(--ink)/40 hover:bg-(--ink-soft) transition-all flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Layers className="w-4 h-4 text-emerald-700" />
+                    <div>
+                      <p className="text-xs font-semibold text-(--ink)">Manage My Apps</p>
+                      <p className="text-[11px] text-(--body-dim)">View statuses, edit, or unpublish</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-(--body-dim)" />
+                </div>
+              </Link>
+
+              <Link href="/" className="block">
+                <div className="p-3 rounded-lg border border-(--line) bg-(--paper) hover:border-(--ink)/40 hover:bg-(--ink-soft) transition-all flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Compass className="w-4 h-4 text-sky-700" />
+                    <div>
+                      <p className="text-xs font-semibold text-(--ink)">Public Directory</p>
+                      <p className="text-[11px] text-(--body-dim)">Browse the live marketplace</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-(--body-dim)" />
+                </div>
+              </Link>
+            </div>
           </div>
-        )}
+
+          {/* Publishing Checklist Card */}
+          <div className="bg-(--card) rounded-xl border border-(--line) p-5 shadow-[3px_3px_0_0_var(--line)] space-y-3">
+            <h3 className="font-mono text-xs uppercase tracking-wider text-(--body-dim) pb-2 border-b border-(--line)">
+              PWA Verification Criteria
+            </h3>
+
+            <ul className="space-y-2 text-xs text-(--body) font-mono">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                <span>Served securely over HTTPS</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                <span>Valid web app manifest with icons</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                <span>Service worker with offline support</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                <span>Responsive for mobile & desktop</span>
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );

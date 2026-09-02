@@ -55,7 +55,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
     },
     {
       label: "My Apps",
-      href: "/dashboard#apps",
+      href: "/dashboard/apps",
       icon: Layers,
     },
     {
@@ -154,6 +154,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
         {navItems.map((item) => {
           const isActive =
             (item.href === "/dashboard" && pathname === "/dashboard") ||
+            (item.href === "/dashboard/apps" && pathname.startsWith("/dashboard/apps")) ||
             (item.href === "/admin" && pathname === "/admin") ||
             (item.href === "/submit" && pathname.startsWith("/submit")) ||
             (item.href === "/admin/review" && pathname.startsWith("/admin/review")) ||
