@@ -23,7 +23,10 @@ import {
   RefreshCw,
   LogOut,
   ShieldCheck,
+  Trophy,
+  ArrowRight,
 } from "lucide-react";
+import { calculateAppRankings } from "@/lib/services/ranking.service";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -242,6 +245,11 @@ export default function Home() {
     return list;
   }, [apps, selectedCategory, debouncedSearch, sortBy]);
 
+  // Shared Bayesian Ranking Calculation (computed in memory from fetched directory pool)
+  const topRankedApps = useMemo(() => {
+    return calculateAppRankings(apps).slice(0, 4);
+  }, [apps]);
+
   const handleClearFilters = useCallback(() => {
     setSearchQuery("");
     setSelectedCategory("all");
@@ -396,6 +404,13 @@ export default function Home() {
               >
                 Directory
               </button>
+              <Link
+                href="/rankings"
+                className="text-sm font-medium text-(--ink) hover:text-(--coral) transition-colors flex items-center gap-1.5"
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                <span>Rankings</span>
+              </Link>
             </div>
 
             {/* Desktop Auth & Actions */}
@@ -496,6 +511,14 @@ export default function Home() {
               >
                 Directory
               </button>
+              <Link
+                href="/rankings"
+                onClick={() => setMenuOpen(false)}
+                className="text-base font-medium text-(--ink) text-left flex items-center gap-2"
+              >
+                <Trophy className="w-4 h-4 text-amber-600" />
+                <span>Top Ranked Apps</span>
+              </Link>
 
               <div className="pt-2 border-t border-(--line) flex flex-col gap-3">
                 {!hasMounted || authLoading ? (
@@ -704,6 +727,135 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Top Ranked Apps Section */}
+        {topRankedApps.length > 0 && (
+          <section id="rankings" className="py-20 md:py-28 bg-(--paper) border-t border-(--line) scroll-mt-16">
+            <div className="max-w-6xl mx-auto px-6">
+              <Reveal className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-10">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-800 text-xs font-mono font-medium mb-2.5">
+                    <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Community Leaderboard</span>
+                  </div>
+                  <h2 className="font-display text-3xl md:text-4xl font-medium text-(--ink) tracking-tight">
+                    Top Ranked Apps
+                  </h2>
+                  <p className="text-(--body) text-base sm:text-lg mt-1">
+                    The highest-rated progressive web apps ranked by community reviews and reliability.
+                  </p>
+                </div>
+
+                <Link
+                  href="/rankings"
+                  className="text-xs font-mono font-semibold text-(--coral) hover:underline inline-flex items-center gap-1 shrink-0 group"
+                >
+                  <span>View all rankings</span>
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </Link>
+              </Reveal>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                {topRankedApps.map((app) => {
+                  const isTop1 = app.rank === 1;
+                  const isTop2 = app.rank === 2;
+                  const isTop3 = app.rank === 3;
+
+                  return (
+                    <Link
+                      key={app.id}
+                      href={`/apps/${app.slug}`}
+                      className="group block"
+                    >
+                      <div
+                        className={`h-full rounded-2xl border p-5 flex flex-col justify-between transition-all duration-200 ${
+                          isTop1
+                            ? "bg-gradient-to-b from-amber-500/10 via-amber-500/5 to-(--card) border-amber-400/80 shadow-[4px_4px_0_0_#d97706] group-hover:shadow-[6px_6px_0_0_#d97706] group-hover:-translate-y-1"
+                            : isTop2
+                            ? "bg-gradient-to-b from-slate-200/40 via-slate-100/20 to-(--card) border-slate-300 shadow-[4px_4px_0_0_#94a3b8] group-hover:shadow-[6px_6px_0_0_#94a3b8] group-hover:-translate-y-1"
+                            : isTop3
+                            ? "bg-gradient-to-b from-amber-700/10 via-amber-700/5 to-(--card) border-amber-700/30 shadow-[4px_4px_0_0_#b45309] group-hover:shadow-[6px_6px_0_0_#b45309] group-hover:-translate-y-1"
+                            : "bg-(--card) border-(--line) shadow-[4px_4px_0_0_var(--line)] group-hover:border-(--ink)/40 group-hover:shadow-[6px_6px_0_0_var(--ink)] group-hover:-translate-y-1"
+                        }`}
+                      >
+                        <div className="space-y-3.5">
+                          <div className="flex items-start justify-between gap-2">
+                            {/* App Icon */}
+                            {app.iconUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={app.iconUrl}
+                                alt={`${app.title} icon`}
+                                className="w-12 h-12 rounded-xl border border-(--line) object-cover bg-white"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-(--ink) text-(--paper) font-display text-lg font-bold flex items-center justify-center shadow-xs">
+                                {app.title ? app.title.charAt(0).toUpperCase() : "P"}
+                              </div>
+                            )}
+
+                            {/* Rank Badge */}
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-bold ${
+                                isTop1
+                                  ? "bg-amber-500 text-amber-950 shadow-xs"
+                                  : isTop2
+                                  ? "bg-slate-300 text-slate-900 shadow-xs"
+                                  : isTop3
+                                  ? "bg-amber-700 text-amber-50 shadow-xs"
+                                  : "bg-(--ink-soft) text-(--ink)"
+                              }`}
+                            >
+                              #{app.rank}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h3 className="font-display text-base font-semibold text-(--ink) group-hover:text-(--coral) transition-colors truncate">
+                              {app.title}
+                            </h3>
+                            <p className="text-[11px] font-mono text-(--body-dim) uppercase tracking-wider">
+                              {app.primaryCategory}
+                            </p>
+                          </div>
+
+                          <p className="text-xs text-(--body) line-clamp-2 leading-relaxed">
+                            {app.tagline || app.description}
+                          </p>
+                        </div>
+
+                        <div className="pt-4 mt-2 border-t border-(--line)/50 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1 font-semibold text-(--ink)">
+                            <span className="text-amber-500">★</span>
+                            <span>{app.ratingAverage.toFixed(1)}</span>
+                            <span className="text-[11px] font-mono text-(--body-dim) font-normal">
+                              ({app.ratingCount})
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono text-(--coral) group-hover:underline flex items-center gap-0.5">
+                            View <ArrowRight className="w-3 h-3" />
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 text-center sm:hidden">
+                <Link href="/rankings">
+                  <Button
+                    variant="outline"
+                    className="w-full h-10 border-(--line) text-(--ink) bg-(--card) hover:bg-(--ink-soft) font-medium text-xs font-mono"
+                  >
+                    <span>View all marketplace rankings</span>
+                    <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Directory */}
         <section id="directory" className="py-24 md:py-32 scroll-mt-16">

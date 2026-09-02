@@ -12,12 +12,14 @@ import {
   Apple,
   ShieldCheck,
   Sparkles,
+  Trophy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PwaCard } from "@/components/directory/PwaCard";
 import { RatingSection } from "@/components/reviews/RatingSection";
 import { StarRating } from "@/components/reviews/StarRating";
 import { getPwaBySlug, getPwasByCategory } from "@/lib/services/pwa.service";
+import { getRankedPwas } from "@/lib/services/ranking.service";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +72,16 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
   const relatedApps = allCategoryApps
     .filter((item) => item.id !== pwa.id && item.slug !== pwa.slug)
     .slice(0, 3);
+
+  // Check if app has an active leaderboard ranking position
+  let rankPosition: number | null = null;
+  if (pwa.ratingCount && pwa.ratingCount > 0) {
+    const topRanked = await getRankedPwas({ limitCount: 50 });
+    const found = topRanked.find((r) => r.slug === pwa.slug || r.id === pwa.id);
+    if (found) {
+      rankPosition = found.rank;
+    }
+  }
 
   // Formatted date if timestamp exists
   const rawDate = pwa.approvedAt || pwa.submittedAt;
@@ -132,7 +144,7 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
 
               {/* Title & Tagline */}
               <div>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <span className="font-mono text-xs uppercase px-2.5 py-0.5 rounded border border-(--ink)/15 text-(--body) bg-(--paper)">
                     {displayCategory}
                   </span>
@@ -140,6 +152,14 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
                     <ShieldCheck className="w-3.5 h-3.5" />
                     Verified PWA
                   </span>
+                  {rankPosition && (
+                    <Link href="/rankings" className="hover:opacity-85 transition-opacity">
+                      <span className="flex items-center gap-1 font-mono text-xs text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded border border-amber-300 font-semibold cursor-pointer">
+                        <Trophy className="w-3.5 h-3.5 text-amber-700" />
+                        <span>#{rankPosition} Ranked App</span>
+                      </span>
+                    </Link>
+                  )}
                   {pwa.ratingCount > 0 && pwa.ratingAverage > 0 && (
                     <span className="flex items-center gap-1 font-mono text-xs text-(--ink) bg-(--ink-soft) px-2 py-0.5 rounded border border-(--line)">
                       <StarRating value={pwa.ratingAverage} readOnly size="sm" />
