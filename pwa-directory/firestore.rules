@@ -175,6 +175,32 @@ service cloud.firestore {
       // using the Firebase Admin SDK.
       allow read, write: if isAdmin();
     }
+
+    // =========================================================================
+    // 8. Notifications Collection (/notifications/{notificationId})
+    // =========================================================================
+    match /notifications/{notificationId} {
+      // Users can only read notifications addressed to them; Admins can read all/own
+      allow read: if isAuthenticated() && (resource.data.recipientId == request.auth.uid || isAdmin());
+
+      // Direct client creation is blocked (Created exclusively by Server API via Admin SDK)
+      allow create: if false;
+
+      // Update: Users can only update the 'read' flag on their own notifications
+      allow update: if isAuthenticated()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.recipientId == resource.data.recipientId
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.message == resource.data.message
+        && request.resource.data.relatedId == resource.data.relatedId
+        && request.resource.data.relatedType == resource.data.relatedType
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.read is bool;
+
+      // Deletion: Notification recipient or Admin
+      allow delete: if isAuthenticated() && (resource.data.recipientId == request.auth.uid || isAdmin());
+    }
   }
 }
 

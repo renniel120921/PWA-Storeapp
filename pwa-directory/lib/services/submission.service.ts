@@ -1,6 +1,7 @@
 import { adminAuth, adminDb, FieldValue } from "@/lib/firebase-admin";
 import { PwaSubmissionSchema } from "@/lib/validators/pwa.validator";
 import { verifyPwaUrl, type PwaVerificationResult } from "@/lib/services/pwa-verifier.service";
+import { notifyAdminsOfNewSubmission } from "@/lib/services/notification-server.service";
 import type { UserRole } from "@/types";
 
 export interface AuthenticatedUserSession {
@@ -191,6 +192,13 @@ export async function promoteDraftSubmission(
           auditedAt: new Date().toISOString(),
         },
       });
+    });
+
+    // Trigger real-time notifications for all administrators
+    await notifyAdminsOfNewSubmission({
+      submissionId,
+      appTitle: validatedData.title,
+      developerName: data.developerName || data.developerEmail || "A developer",
     });
 
     return {

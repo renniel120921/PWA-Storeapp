@@ -17,6 +17,7 @@ import {
   ExternalLink,
   ChevronRight,
 } from "lucide-react";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 interface NavItem {
   label: string;
@@ -272,6 +273,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           {role === "admin" ? (
             <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200 px-2 py-0.5 rounded">
               ADMIN
@@ -307,6 +309,21 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
       {/* Main Content Area                                                     */}
       {/* --------------------------------------------------------------------- */}
       <main className="flex-1 md:pl-64 min-w-0 flex flex-col overflow-x-hidden">
+        {/* Desktop Sticky Header Bar */}
+        <div className="hidden md:flex items-center justify-between px-7 lg:px-10 py-3 border-b border-(--line) bg-(--card)/80 backdrop-blur-md sticky top-0 z-20">
+          <div className="flex items-center gap-2 font-mono text-xs text-(--body-dim)">
+            <span className="font-semibold text-(--ink)">
+              {role === "admin" ? "Moderation Portal" : "Developer Portal"}
+            </span>
+            <span>•</span>
+            <span>Likha Apps</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+          </div>
+        </div>
+
         <div className="flex-1 p-4 sm:p-7 lg:p-10 max-w-7xl w-full mx-auto">
           {children}
         </div>

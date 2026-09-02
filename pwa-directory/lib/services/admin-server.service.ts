@@ -1,5 +1,9 @@
 import "server-only";
 import { adminAuth, adminDb, FieldValue } from "@/lib/firebase-admin";
+import {
+  notifyDeveloperOfApproval,
+  notifyDeveloperOfRejection,
+} from "@/lib/services/notification-server.service";
 import type { UserRole } from "@/types";
 
 export class AdminActionError extends Error {
@@ -208,6 +212,14 @@ export async function approveSubmissionServer(
       });
     });
 
+    // Trigger real-time notification for developer
+    await notifyDeveloperOfApproval({
+      developerId: subData.developerId || "",
+      submissionId,
+      pwaSlug: slug,
+      appTitle: title,
+    });
+
     return {
       ok: true,
       action: "approve",
@@ -282,6 +294,14 @@ export async function rejectSubmissionServer(
         reviewedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+    });
+
+    // Trigger real-time notification for developer
+    await notifyDeveloperOfRejection({
+      developerId: subData.developerId || "",
+      submissionId,
+      appTitle: subData.title || subData.draftData?.title || "Application",
+      reason: trimmedReason,
     });
 
     return {
