@@ -152,9 +152,44 @@ export default function Home() {
   const [apps, setApps] = useState<Pwa[]>([]);
   const [loading, setLoading] = useState(true);
   const hasMounted = useHydrated();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [sortBy, setSortBy] = useState<SortOption>("newest");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("search") || params.get("q") || "";
+    }
+    return "";
+  });
+
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("category") || "all";
+    }
+    return "all";
+  });
+
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const sortParam = params.get("sort") || "recommended";
+      if (
+        sortParam === "recommended" ||
+        sortParam === "top_rated" ||
+        sortParam === "top-rated" ||
+        sortParam === "newest" ||
+        sortParam === "name_asc" ||
+        sortParam === "a-z"
+      ) {
+        return sortParam === "top-rated"
+          ? "top_rated"
+          : sortParam === "a-z"
+          ? "name_asc"
+          : (sortParam as SortOption);
+      }
+    }
+    return "recommended";
+  });
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrollPct, setScrollPct] = useState(0);
   const [parallax, setParallax] = useState(0);
@@ -183,77 +218,178 @@ export default function Home() {
     fetchPWAs();
   }, []);
 
-  const filteredApps = useMemo(() => {
-    let list = [...apps];
+  // Listen to browser Back / Forward popstate events
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const searchParam = params.get("search") || params.get("q") || "";
+      const categoryParam = params.get("category") || "all";
+      const sortParam = params.get("sort") || "recommended";
 
-    // 1. Category Filter
-    if (selectedCategory && selectedCategory !== "all") {
-      list = list.filter((app) => {
-        const cat = app.primaryCategory?.toLowerCase() || "";
-        const categories = (app.categories || []).map((c) => c.toLowerCase());
-        return (
-          cat === selectedCategory.toLowerCase() ||
-          categories.includes(selectedCategory.toLowerCase())
-        );
-      });
-    }
+      setSearchQuery(searchParam);
+      setSelectedCategory(categoryParam);
+      if (
+        sortParam === "recommended" ||
+        sortParam === "top_rated" ||
+        sortParam === "top-rated" ||
+        sortParam === "newest" ||
+        sortParam === "name_asc" ||
+        sortParam === "a-z"
+      ) {
+        const normalizedSort: SortOption =
+          sortParam === "top-rated"
+            ? "top_rated"
+            : sortParam === "a-z"
+            ? "name_asc"
+            : (sortParam as SortOption);
+        setSortBy(normalizedSort);
+      }
+    };
 
-    // 2. Search Filter (title, description, tagline, tags)
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Synchronize state changes to URL query parameters for shareability
+  useEffect(() => {
+    if (!hasMounted) return;
+    const params = new URLSearchParams();
     if (debouncedSearch.trim()) {
-      const q = debouncedSearch.toLowerCase().trim();
-      list = list.filter((app) => {
-        const title = (app.title || "").toLowerCase();
-        const desc = (app.description || "").toLowerCase();
-        const tagline = (app.tagline || "").toLowerCase();
-        const tags = (app.tags || []).join(" ").toLowerCase();
-        return (
-          title.includes(q) ||
-          desc.includes(q) ||
-          tagline.includes(q) ||
-          tags.includes(q)
-        );
-      });
+      params.set("search", debouncedSearch.trim());
+    }
+    if (selectedCategory && selectedCategory !== "all") {
+      params.set("category", selectedCategory);
+    }
+    if (sortBy && sortBy !== "recommended") {
+      params.set("sort", sortBy);
     }
 
-    // 3. Sorting
-    list.sort((a, b) => {
-      if (sortBy === "name_asc") {
-        return (a.title || "").localeCompare(b.title || "");
-      }
-      if (sortBy === "name_desc") {
-        return (b.title || "").localeCompare(a.title || "");
-      }
-      if (sortBy === "oldest") {
-        const getTimestamp = (val: Pwa["submittedAt"]) => {
-          if (!val) return 0;
-          if (typeof val === "object" && "seconds" in val) return val.seconds;
-          if (val instanceof Date) return val.getTime();
-          return 0;
-        };
-        return getTimestamp(a.submittedAt) - getTimestamp(b.submittedAt);
-      }
-      // Default: newest first
-      const getTimestamp = (val: Pwa["submittedAt"]) => {
-        if (!val) return 0;
-        if (typeof val === "object" && "seconds" in val) return val.seconds;
-        if (val instanceof Date) return val.getTime();
-        return 0;
-      };
-      return getTimestamp(b.submittedAt) - getTimestamp(a.submittedAt);
-    });
-
-    return list;
-  }, [apps, selectedCategory, debouncedSearch, sortBy]);
+    const queryString = params.toString();
+    const newUrl = queryString ? `/?${queryString}` : "/";
+    if (window.location.search !== (queryString ? `?${queryString}` : "")) {
+      window.history.replaceState(null, "", newUrl);
+    }
+  }, [debouncedSearch, selectedCategory, sortBy, hasMounted]);
 
   // Shared Bayesian Ranking Calculation (computed in memory from fetched directory pool)
   const topRankedApps = useMemo(() => {
     return calculateAppRankings(apps).slice(0, 4);
   }, [apps]);
 
+  // Bayesian ranking scores map for directory sorting
+  const rankingScoresMap = useMemo(() => {
+    const ranked = calculateAppRankings(apps);
+    const map = new Map<string, number>();
+    ranked.forEach((r) => {
+      map.set(r.id, r.rankingScore);
+    });
+    return map;
+  }, [apps]);
+
+  const filteredApps = useMemo(() => {
+    let list = [...apps];
+
+    // 1. Category Filter
+    if (selectedCategory && selectedCategory !== "all") {
+      const selected = selectedCategory.toLowerCase();
+      list = list.filter((app) => {
+        const cat = (app.primaryCategory || "").toLowerCase();
+        const categories = (app.categories || []).map((c) => c.toLowerCase());
+        return cat === selected || categories.includes(selected);
+      });
+    }
+
+    // 2. Search Filter (title, developerName, description, tagline, category, tags)
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase().trim();
+      list = list.filter((app) => {
+        const title = (app.title || "").toLowerCase();
+        const devName = (app.developerName || "").toLowerCase();
+        const desc = (app.description || "").toLowerCase();
+        const tagline = (app.tagline || "").toLowerCase();
+        const primaryCat = (app.primaryCategory || "").toLowerCase();
+        const categories = (app.categories || []).join(" ").toLowerCase();
+        const tags = (app.tags || []).join(" ").toLowerCase();
+
+        return (
+          title.includes(q) ||
+          devName.includes(q) ||
+          desc.includes(q) ||
+          tagline.includes(q) ||
+          primaryCat.includes(q) ||
+          categories.includes(q) ||
+          tags.includes(q)
+        );
+      });
+    }
+
+    // 3. Sorting Strategies
+    list.sort((a, b) => {
+      if (sortBy === "name_asc") {
+        return (a.title || "").localeCompare(b.title || "");
+      }
+
+      if (sortBy === "top_rated") {
+        const scoreA = rankingScoresMap.get(a.id) || 0;
+        const scoreB = rankingScoresMap.get(b.id) || 0;
+        const scoreDiff = scoreB - scoreA;
+        if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+
+        const countDiff = (b.ratingCount || 0) - (a.ratingCount || 0);
+        if (countDiff !== 0) return countDiff;
+
+        const avgDiff = (b.ratingAverage || 0) - (a.ratingAverage || 0);
+        if (Math.abs(avgDiff) > 1e-6) return avgDiff;
+
+        return (a.title || "").localeCompare(b.title || "");
+      }
+
+      if (sortBy === "newest") {
+        const getTimestamp = (val: Pwa["submittedAt"]) => {
+          if (!val) return 0;
+          if (typeof val === "object" && "seconds" in val) return val.seconds;
+          if (val instanceof Date) return val.getTime();
+          return 0;
+        };
+        const timeDiff =
+          getTimestamp(b.approvedAt || b.submittedAt) -
+          getTimestamp(a.approvedAt || a.submittedAt);
+        if (timeDiff !== 0) return timeDiff;
+        return (a.title || "").localeCompare(b.title || "");
+      }
+
+      // Default: "recommended"
+      // Featured apps first, then Bayesian ranking score, then published timestamp, then A-Z
+      if (Boolean(b.isFeatured) !== Boolean(a.isFeatured)) {
+        return (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0);
+      }
+
+      const scoreA = rankingScoresMap.get(a.id) || 0;
+      const scoreB = rankingScoresMap.get(b.id) || 0;
+      const scoreDiff = scoreB - scoreA;
+      if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+
+      const getTimestamp = (val: Pwa["submittedAt"]) => {
+        if (!val) return 0;
+        if (typeof val === "object" && "seconds" in val) return val.seconds;
+        if (val instanceof Date) return val.getTime();
+        return 0;
+      };
+      const timeDiff =
+        getTimestamp(b.approvedAt || b.submittedAt) -
+        getTimestamp(a.approvedAt || a.submittedAt);
+      if (timeDiff !== 0) return timeDiff;
+
+      return (a.title || "").localeCompare(b.title || "");
+    });
+
+    return list;
+  }, [apps, selectedCategory, debouncedSearch, sortBy, rankingScoresMap]);
+
   const handleClearFilters = useCallback(() => {
     setSearchQuery("");
     setSelectedCategory("all");
-    setSortBy("newest");
+    setSortBy("recommended");
   }, []);
 
   useEffect(() => {

@@ -3,18 +3,18 @@
 import React from "react";
 import { ArrowUpDown } from "lucide-react";
 
-export type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
+export type SortOption = "recommended" | "top_rated" | "newest" | "name_asc";
 
 interface SortDropdownProps {
   value: SortOption;
   onChange: (sort: SortOption) => void;
 }
 
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "newest", label: "Newest First" },
-  { value: "oldest", label: "Oldest First" },
-  { value: "name_asc", label: "Name (A–Z)" },
-  { value: "name_desc", label: "Name (Z–A)" },
+export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "recommended", label: "Recommended" },
+  { value: "top_rated", label: "Top Rated" },
+  { value: "newest", label: "Newest" },
+  { value: "name_asc", label: "A–Z" },
 ];
 
 export function SortDropdown({ value, onChange }: SortDropdownProps) {
@@ -45,4 +45,3 @@ export function SortDropdown({ value, onChange }: SortDropdownProps) {
     </div>
   );
 }
-

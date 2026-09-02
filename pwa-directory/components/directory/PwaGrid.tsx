@@ -61,12 +61,10 @@ export function PwaGrid({
           <SearchX className="h-7 w-7" />
         </div>
         <h3 className="text-xl font-semibold text-(--ink) font-display mb-1.5">
-          No matching apps found
+          No apps found
         </h3>
         <p className="text-xs sm:text-sm text-(--body) max-w-sm mx-auto mb-6 leading-relaxed">
-          {searchQuery
-            ? `We couldn't find any apps matching "${searchQuery}". Try a different keyword or category.`
-            : `No apps currently listed under this category.`}
+          Try a different search or category.
         </p>
         <Button
           onClick={onClearFilters}
