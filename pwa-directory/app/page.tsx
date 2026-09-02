@@ -525,28 +525,34 @@ export default function Home() {
             <div className="hidden md:flex items-center gap-8">
               <button
                 onClick={() => scrollToSection("about")}
-                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors"
+                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
               >
                 Why Likha
               </button>
               <button
                 onClick={() => scrollToSection("how")}
-                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors"
+                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
               >
                 How it works
               </button>
               <button
                 onClick={() => scrollToSection("directory")}
-                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors"
+                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
               >
                 Directory
               </button>
               <Link
                 href="/rankings"
-                className="text-sm font-medium text-(--ink) hover:text-(--coral) transition-colors flex items-center gap-1.5"
+                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors flex items-center gap-1.5"
               >
                 <Trophy className="w-3.5 h-3.5 text-amber-600" />
                 <span>Rankings</span>
+              </Link>
+              <Link
+                href="/about"
+                className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors"
+              >
+                About
               </Link>
             </div>
 
@@ -666,6 +672,13 @@ export default function Home() {
               >
                 <Trophy className="w-4 h-4 text-amber-600" />
                 <span>Top Ranked Apps</span>
+              </Link>
+              <Link
+                href="/about"
+                onClick={() => setMenuOpen(false)}
+                className="text-base font-medium text-(--ink) text-left"
+              >
+                About
               </Link>
 
               <div className="pt-2 border-t border-(--line) flex flex-col gap-3">
@@ -1090,6 +1103,22 @@ export default function Home() {
                 Likha Apps
               </span>
             </div>
+
+            <div className="flex items-center gap-6 text-xs font-mono text-(--body)">
+              <Link href="/" className="hover:text-(--ink) transition-colors">
+                Directory
+              </Link>
+              <Link href="/rankings" className="hover:text-(--ink) transition-colors">
+                Rankings
+              </Link>
+              <Link href="/about" className="hover:text-(--ink) transition-colors">
+                About
+              </Link>
+              <Link href="/submit" className="hover:text-(--ink) transition-colors">
+                Submit
+              </Link>
+            </div>
+
             <p className="text-(--body-dim) text-sm font-medium">
               © {new Date().getFullYear()} Likha Apps. Built for developers,
               by developers.

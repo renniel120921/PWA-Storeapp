@@ -102,6 +102,13 @@ export default function RankingsPage() {
               <Trophy className="w-3.5 h-3.5 text-amber-600" />
               <span>Rankings</span>
             </Link>
+            <span className="text-(--line)">/</span>
+            <Link
+              href="/about"
+              className="text-(--body) hover:text-(--ink) transition-colors"
+            >
+              About
+            </Link>
           </nav>
         </div>
 
