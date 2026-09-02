@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb, FieldValue } from "@/lib/firebase-admin";
+import type { DocumentReference, DocumentSnapshot } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,11 +101,24 @@ export async function POST(request: Request) {
 
     // 5. Execute State Transition: approved -> suspended (unlisted from public directory)
     await adminDb.runTransaction(async (transaction) => {
+      // --- ALL READS FIRST ---
       const livePwa = await transaction.get(pwaRef);
       if (!livePwa.exists) {
         throw new Error("PWA document missing during transaction.");
       }
 
+      const currentPwaData = livePwa.data();
+      const submissionId = currentPwaData?.submissionId || pwaData.submissionId;
+
+      let subRef: DocumentReference | null = null;
+      let liveSub: DocumentSnapshot | null = null;
+
+      if (submissionId && typeof submissionId === "string") {
+        subRef = adminDb.collection("submissions").doc(submissionId);
+        liveSub = await transaction.get(subRef);
+      }
+
+      // --- ALL WRITES AFTER READS ---
       transaction.update(pwaRef, {
         status: "suspended",
         unlistedAt: FieldValue.serverTimestamp(),
@@ -112,16 +126,11 @@ export async function POST(request: Request) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      const submissionId = pwaData.submissionId;
-      if (submissionId && typeof submissionId === "string") {
-        const subRef = adminDb.collection("submissions").doc(submissionId);
-        const liveSub = await transaction.get(subRef);
-        if (liveSub.exists) {
-          transaction.update(subRef, {
-            status: "suspended",
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-        }
+      if (subRef && liveSub && liveSub.exists) {
+        transaction.update(subRef, {
+          status: "suspended",
+          updatedAt: FieldValue.serverTimestamp(),
+        });
       }
     });
 
