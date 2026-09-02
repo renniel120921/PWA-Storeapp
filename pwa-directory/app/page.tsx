@@ -145,6 +145,7 @@ export default function Home() {
     profile,
     isAuthenticated,
     isAdmin,
+    isDeveloper,
     loading: authLoading,
     logout,
   } = useAuth();
@@ -562,7 +563,7 @@ export default function Home() {
                     </span>
                   )}
                   <Link
-                    href={isAdmin ? "/admin" : "/dashboard"}
+                    href={isAdmin ? "/admin" : isDeveloper ? "/dashboard" : "/account"}
                     className="flex items-center gap-2 pl-2 pr-3 py-1 rounded-full bg-(--card) border border-(--line) text-xs font-mono text-(--ink) hover:border-(--ink)/40 transition-colors"
                   >
                     <span className="w-5 h-5 rounded-full bg-(--ink) text-(--paper) flex items-center justify-center text-[10px] font-sans font-bold uppercase">
@@ -570,21 +571,32 @@ export default function Home() {
                         ? profile.firstName[0]
                         : user?.email
                         ? user.email[0]
-                        : "D"}
+                        : "U"}
                     </span>
                     <span className="font-medium truncate max-w-[120px]">
-                      {profile?.firstName || user?.displayName || "Developer"}
+                      {profile?.firstName || user?.displayName || (isDeveloper ? "Developer" : "Account")}
                     </span>
                   </Link>
-                  <Button
-                    onClick={goToSignup}
-                    className="rounded-md bg-(--coral) text-white hover:bg-[#e85a3e] px-4 h-9 shadow-none text-xs font-medium transition-colors"
-                  >
-                    Submit App
-                  </Button>
+                  {isDeveloper ? (
+                    <Button
+                      onClick={goToSignup}
+                      className="rounded-md bg-(--coral) text-white hover:bg-[#e85a3e] px-4 h-9 shadow-none text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      Submit App
+                    </Button>
+                  ) : (
+                    <Link href="/account">
+                      <Button
+                        variant="outline"
+                        className="rounded-md border-(--line) text-(--ink) hover:bg-(--ink-soft) px-4 h-9 shadow-none text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        My Account
+                      </Button>
+                    </Link>
+                  )}
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-1 text-xs font-medium text-(--body-dim) hover:text-(--ink) transition-colors p-1.5 rounded-md hover:bg-(--ink-soft)"
+                    className="flex items-center gap-1 text-xs font-medium text-(--body-dim) hover:text-(--ink) transition-colors p-1.5 rounded-md hover:bg-(--ink-soft) cursor-pointer"
                     title="Sign out"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -595,13 +607,13 @@ export default function Home() {
                 <>
                   <button
                     onClick={() => router.push("/login")}
-                    className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors"
+                    className="text-sm font-medium text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
                   >
                     Log in
                   </button>
                   <Button
                     onClick={goToSignup}
-                    className="rounded-md bg-(--coral) text-white hover:bg-[#e85a3e] px-5 shadow-none font-medium transition-colors"
+                    className="rounded-md bg-(--coral) text-white hover:bg-[#e85a3e] px-5 shadow-none font-medium transition-colors cursor-pointer"
                   >
                     Submit App
                   </Button>
@@ -663,7 +675,7 @@ export default function Home() {
                   <>
                     <div className="flex items-center justify-between py-1">
                       <Link
-                        href={isAdmin ? "/admin" : "/dashboard"}
+                        href={isAdmin ? "/admin" : isDeveloper ? "/dashboard" : "/account"}
                         onClick={() => setMenuOpen(false)}
                         className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
                       >
@@ -672,14 +684,18 @@ export default function Home() {
                             ? profile.firstName[0]
                             : user?.email
                             ? user.email[0]
-                            : "D"}
+                            : "U"}
                         </span>
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-(--ink) leading-tight">
-                            {profile?.fullName || user?.displayName || (isAdmin ? "Administrator" : "Developer")}
+                            {profile?.fullName || user?.displayName || (isAdmin ? "Administrator" : isDeveloper ? "Developer" : "User")}
                           </span>
                           <span className="text-[11px] font-mono text-(--body-dim)">
-                            {isAdmin ? "Admin Moderation Portal" : "Developer Dashboard"}
+                            {isAdmin
+                              ? "Admin Moderation Portal"
+                              : isDeveloper
+                              ? "Developer Dashboard"
+                              : "Personal Account"}
                           </span>
                         </div>
                       </Link>
@@ -688,7 +704,7 @@ export default function Home() {
                           setMenuOpen(false);
                           handleLogout();
                         }}
-                        className="text-xs font-medium text-red-600 hover:underline flex items-center gap-1"
+                        className="text-xs font-medium text-red-600 hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         Log out

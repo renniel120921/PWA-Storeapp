@@ -5,7 +5,7 @@ import type { Timestamp } from "firebase/firestore";
  * Valid authenticated user roles.
  * Visitors are represented by an unauthenticated state (null user / null role).
  */
-export type UserRole = "developer" | "admin";
+export type UserRole = "user" | "developer" | "admin";
 
 /**
  * Compatible Timestamp type that supports Firestore Timestamp instances,

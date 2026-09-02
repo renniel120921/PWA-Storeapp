@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getDeveloperDashboardApps,
@@ -29,12 +30,24 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import type { PwaStatus } from "@/types";
 
 export default function DeveloperDashboardPage() {
-  const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { user, profile, role, isAuthenticated, loading: authLoading } = useAuth();
 
   const [items, setItems] = useState<DeveloperAppItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Enforce developer / admin role guard
+  useEffect(() => {
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        router.push("/login?next=/dashboard");
+      } else if (role === "user") {
+        router.push("/account");
+      }
+    }
+  }, [authLoading, isAuthenticated, role, router]);
 
   // Load Developer Data cleanly using deduplicated aggregation
   useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -18,9 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Rocket, ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// Brand tokens (hardcoded, not CSS vars — SweetAlert2 renders into
-// document.body, outside this component's scoped custom properties, so the
-// vars below wouldn't resolve there).
+// Brand tokens
 // ---------------------------------------------------------------------------
 const PAPER = "#F6F4EC";
 const CARD = "#FFFFFF";
@@ -39,18 +37,27 @@ function notify(opts: SweetAlertOptions) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Client-side rate limiting
-// ---------------------------------------------------------------------------
-// Same caveat as the signup page: this is a UX deterrent that lives in
-// localStorage and can be cleared by anyone. It slows down casual
-// brute-forcing from this browser; it is not a substitute for server-side
-// protection. Firebase Auth already throttles repeated failed sign-ins per
-// account server-side (auth/too-many-requests) — this adds a local layer
-// on top so the UI can react before that kicks in.
+/**
+ * Sanitizes an internal redirect URL to prevent open redirect vulnerabilities.
+ */
+function sanitizeInternalRedirect(url: string | null): string | null {
+  if (!url) return null;
+  const decoded = decodeURIComponent(url).trim();
+  if (
+    decoded.startsWith("/") &&
+    !decoded.startsWith("//") &&
+    !decoded.includes("://") &&
+    !decoded.includes("\r") &&
+    !decoded.includes("\n")
+  ) {
+    return decoded;
+  }
+  return null;
+}
+
 const RATE_LIMIT_KEY = "likha_login_attempts";
 const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 function getRecentAttempts(): number[] {
   try {
@@ -72,7 +79,7 @@ function recordAttempt() {
   try {
     localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(attempts));
   } catch {
-    // localStorage unavailable (private mode, etc.) — fail open, not closed.
+    // localStorage unavailable
   }
 }
 
@@ -82,6 +89,16 @@ function clearAttempts() {
   } catch {
     // ignore
   }
+}
+
+function checkRateLimitExceeded(): { isExceeded: boolean; minutesLeft: number } {
+  const attempts = getRecentAttempts();
+  if (attempts.length >= RATE_LIMIT_MAX) {
+    const oldest = Math.min(...attempts);
+    const minutesLeft = Math.ceil((RATE_LIMIT_WINDOW_MS - (Date.now() - oldest)) / 60000);
+    return { isExceeded: true, minutesLeft };
+  }
+  return { isExceeded: false, minutesLeft: 0 };
 }
 
 function getLoginErrorMessage(err: unknown): string {
@@ -107,35 +124,35 @@ function getLoginErrorMessage(err: unknown): string {
   return "Failed to log in. Please try again.";
 }
 
-export default function Login() {
+function LoginForm() {
   const router = useRouter();
-  const { user, isAdmin, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const { user, role: currentRole, isAdmin, isDeveloper, loading: authLoading } = useAuth();
+
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    // honeypot — opaque non-autofill field name; bots may fill this, browsers will not
     _likha_hp_check: "",
   });
 
-  const [rateLimited] = useState(() => {
-    // Guard for SSR: this component renders on the server first (even
-    // with "use client"), and localStorage doesn't exist there.
-    if (typeof window === "undefined") return false;
-    return getRecentAttempts().length >= RATE_LIMIT_MAX;
-  });
-
-  // If already authenticated and profile hydrated, route to appropriate portal directly
+  // If already authenticated and profile hydrated, route to target
   useEffect(() => {
     if (!authLoading && user) {
-      if (isAdmin) {
+      const safeNext = sanitizeInternalRedirect(nextParam);
+      if (safeNext) {
+        router.push(safeNext);
+      } else if (isAdmin) {
         router.push("/admin");
-      } else {
+      } else if (isDeveloper) {
         router.push("/dashboard");
+      } else {
+        router.push("/account");
       }
     }
-  }, [authLoading, user, isAdmin, router]);
+  }, [authLoading, user, isAdmin, isDeveloper, currentRole, nextParam, router]);
 
   const canSubmit = useMemo(
     () => formData.email.trim() !== "" && formData.password !== "",
@@ -168,13 +185,12 @@ export default function Login() {
       notify({
         icon: "success",
         title: "Check your inbox",
-        text: `A password reset link was sent to ${email}, if an account exists for it.`,
+        text: `If an account exists for ${email}, a reset link is on its way.`,
       });
-    } catch (err: unknown) {
-      console.error("Password reset error:", err);
+    } catch (err) {
       notify({
         icon: "error",
-        title: "Couldn't send reset link",
+        title: "Couldn't send link",
         text: getLoginErrorMessage(err),
       });
     }
@@ -183,24 +199,18 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Honeypot check: if filled by a scripted bot, silently bail
     if (formData._likha_hp_check && formData._likha_hp_check.trim() !== "") {
       console.warn("Login blocked: honeypot field was filled.");
       return;
     }
 
-    // Rate limit check
-    const attempts = getRecentAttempts();
-    if (attempts.length >= RATE_LIMIT_MAX) {
-      const oldest = Math.min(...attempts);
-      const minutesLeft = Math.ceil(
-        (RATE_LIMIT_WINDOW_MS - (Date.now() - oldest)) / 60000
-      );
+    const limitCheck = checkRateLimitExceeded();
+    if (limitCheck.isExceeded) {
       notify({
         icon: "warning",
         title: "Too many attempts",
-        text: `Please wait about ${minutesLeft} minute${
-          minutesLeft === 1 ? "" : "s"
+        text: `Please wait about ${limitCheck.minutesLeft} minute${
+          limitCheck.minutesLeft === 1 ? "" : "s"
         } before trying again.`,
       });
       return;
@@ -219,14 +229,14 @@ export default function Login() {
       clearAttempts();
 
       // Read trusted Firestore user profile directly to ensure zero race condition
-      let role = "developer";
+      let resolvedRole = "user";
       let fullName = "";
       try {
         const userDocRef = doc(db, "users", userCredential.user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
-          role = data.role === "admin" ? "admin" : "developer";
+          resolvedRole = data.role === "admin" ? "admin" : data.role === "developer" ? "developer" : "user";
           fullName = data.fullName || data.firstName || "";
         }
       } catch (profileErr) {
@@ -236,8 +246,22 @@ export default function Login() {
         );
       }
 
-      // CRITICAL ROLE PRIORITY: Admin MUST take precedence
-      if (role === "admin") {
+      const safeNext = sanitizeInternalRedirect(nextParam);
+
+      if (safeNext) {
+        await Swal.fire({
+          icon: "success",
+          title: fullName ? `Welcome, ${fullName}!` : "Welcome back!",
+          text: "Returning to application...",
+          timer: 1000,
+          timerProgressBar: true,
+          showConfirmButton: false,
+          background: CARD,
+          color: INK,
+          customClass: { popup: "rounded-xl" },
+        });
+        router.push(safeNext);
+      } else if (resolvedRole === "admin") {
         await Swal.fire({
           icon: "success",
           title: "Welcome back, Administrator!",
@@ -250,7 +274,7 @@ export default function Login() {
           customClass: { popup: "rounded-xl" },
         });
         router.push("/admin");
-      } else {
+      } else if (resolvedRole === "developer") {
         await Swal.fire({
           icon: "success",
           title: fullName ? `Welcome back, ${fullName}!` : "Welcome back!",
@@ -263,6 +287,19 @@ export default function Login() {
           customClass: { popup: "rounded-xl" },
         });
         router.push("/dashboard");
+      } else {
+        await Swal.fire({
+          icon: "success",
+          title: fullName ? `Welcome back, ${fullName}!` : "Welcome back!",
+          text: "Redirecting to your Account Portal...",
+          timer: 1400,
+          timerProgressBar: true,
+          showConfirmButton: false,
+          background: CARD,
+          color: INK,
+          customClass: { popup: "rounded-xl" },
+        });
+        router.push("/account");
       }
     } catch (err: unknown) {
       console.error("Login error:", err);
@@ -275,6 +312,138 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  const safeNext = sanitizeInternalRedirect(nextParam);
+  const signupLink = safeNext
+    ? `/signup?next=${encodeURIComponent(safeNext)}`
+    : "/signup";
+
+  return (
+    <div className="login-card-enter w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)]">
+      <div className="flex flex-col items-center mb-8">
+        <div className="bg-(--ink) p-2.5 rounded-full mb-4">
+          <Rocket className="h-6 w-6 text-(--paper)" />
+        </div>
+        <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-wide text-(--body)/70 mb-2">
+          Identity verification
+        </span>
+        <h1 className="font-[family-name:var(--font-display)] text-2xl font-medium text-(--ink) tracking-tight">
+          Welcome back
+        </h1>
+        <p className="text-(--body) text-sm mt-2 text-center leading-relaxed">
+          Log in to manage your account, applications, and reviews.
+        </p>
+      </div>
+
+      <form onSubmit={handleLogin} className="space-y-4" noValidate>
+        {/* Honeypot */}
+        <div
+          aria-hidden="true"
+          style={{ display: "none", position: "absolute", left: "-9999px" }}
+        >
+          <label htmlFor="_likha_hp_check">Anti-bot verification</label>
+          <input
+            id="_likha_hp_check"
+            name="_likha_hp_check"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={formData._likha_hp_check}
+            onChange={(e) =>
+              setFormData({ ...formData, _likha_hp_check: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-(--ink)">
+            Email address
+          </label>
+          <Input
+            required
+            type="email"
+            placeholder="developer@example.com"
+            className="h-11 border-(--line) focus-visible:ring-(--ink)"
+            value={formData.email}
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center">
+            <label className="text-sm font-medium text-(--ink)">
+              Password
+            </label>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-xs text-(--body) hover:text-(--ink) underline font-normal transition-colors cursor-pointer"
+            >
+              Forgot password?
+            </button>
+          </div>
+          <div className="relative">
+            <Input
+              required
+              type={showPassword ? "text" : "password"}
+              placeholder="Enter your password"
+              className="h-11 border-(--line) pr-11 focus-visible:ring-(--ink)"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          disabled={!canSubmit || loading}
+          className="w-full h-12 bg-(--coral) hover:bg-[#e85a3e] text-white text-base font-medium mt-2 cursor-pointer"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Logging in...
+            </>
+          ) : (
+            "Log in"
+          )}
+        </Button>
+      </form>
+
+      <div className="mt-8 pt-6 border-t border-(--line) text-center">
+        <p className="text-sm text-(--body)">
+          Don&apos;t have an account yet?{" "}
+          <a
+            href={signupLink}
+            className="text-(--ink) font-medium hover:underline"
+          >
+            Create one
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function Login() {
+  const router = useRouter();
 
   return (
     <div
@@ -313,142 +482,22 @@ export default function Login() {
 
       <button
         onClick={() => router.push("/")}
-        className="fixed top-6 left-6 z-10 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-(--body) transition-colors hover:bg-(--card) hover:text-(--ink)"
+        className="fixed top-6 left-6 z-10 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-(--body) transition-colors hover:bg-(--card) hover:text-(--ink) cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to directory
       </button>
 
       <div className="flex-1 flex flex-col justify-center items-center px-6 py-20">
-        <div className="login-card-enter w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)]">
-          <div className="flex flex-col items-center mb-8">
-            <div className="bg-(--ink) p-2.5 rounded-full mb-4">
-              <Rocket className="h-6 w-6 text-(--paper)" />
+        <Suspense
+          fallback={
+            <div className="w-full max-w-md h-80 rounded-xl bg-(--card) border border-(--line) flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-(--body-dim)" />
             </div>
-            <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-wide text-(--body)/70 mb-2">
-              Returning developer
-            </span>
-            <h1 className="font-[family-name:var(--font-display)] text-2xl font-medium text-(--ink) tracking-tight">
-              Welcome back
-            </h1>
-            <p className="text-(--body) text-sm mt-2 text-center leading-relaxed">
-              Log in to manage your listings in the directory.
-            </p>
-          </div>
-
-          {rateLimited && (
-            <div className="text-sm p-3 rounded-md mb-6 border border-amber-200 bg-amber-50 text-amber-800">
-              Youve hit the sign-in attempt limit for now. Please wait a
-              few minutes before trying again.
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-5" noValidate>
-            {/* Honeypot — hidden from real users, left for bots */}
-            <div
-              aria-hidden="true"
-              style={{ display: "none", position: "absolute", left: "-9999px" }}
-            >
-              <label htmlFor="_likha_hp_check">Anti-bot verification</label>
-              <input
-                id="_likha_hp_check"
-                name="_likha_hp_check"
-                type="text"
-                tabIndex={-1}
-                autoComplete="off"
-                value={formData._likha_hp_check}
-                onChange={(e) =>
-                  setFormData({ ...formData, _likha_hp_check: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-(--ink)">
-                Email address
-              </label>
-              <Input
-                required
-                type="email"
-                autoComplete="email"
-                placeholder="developer@example.com"
-                className="h-11 border-(--line) focus-visible:ring-(--ink)"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-(--ink)">
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  className="text-xs font-medium text-(--body) hover:text-(--ink) hover:underline transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <div className="relative">
-                <Input
-                  required
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  placeholder="Enter your password"
-                  className="h-11 border-(--line) pr-11 focus-visible:ring-(--ink)"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--body) hover:text-(--ink) transition-colors"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading || rateLimited || !canSubmit}
-              className="w-full h-12 bg-(--coral) hover:bg-[#e85a3e] text-white text-base font-medium mt-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Logging in...
-                </>
-              ) : (
-                "Log in"
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-(--line) text-center">
-            <p className="text-sm text-(--body)">
-              New to Likha Apps?{" "}
-              <a
-                href="/signup"
-                className="text-(--ink) font-medium hover:underline"
-              >
-                Create an account
-              </a>
-            </p>
-          </div>
-        </div>
+          }
+        >
+          <LoginForm />
+        </Suspense>
       </div>
     </div>
   );

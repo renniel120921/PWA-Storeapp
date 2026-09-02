@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   createUserWithEmailAndPassword,
   updateProfile,
@@ -30,12 +30,12 @@ import {
   EyeOff,
   Check,
   X,
+  User,
 } from "lucide-react";
+import type { UserRole } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Brand tokens (hardcoded, not CSS vars — SweetAlert2 renders into
-// document.body, outside this component's scoped custom properties, so the
-// vars below wouldn't resolve there).
+// Brand tokens
 // ---------------------------------------------------------------------------
 const PAPER = "#F6F4EC";
 const CARD = "#FFFFFF";
@@ -54,13 +54,24 @@ function notify(opts: SweetAlertOptions) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Name normalization
-// ---------------------------------------------------------------------------
-// Trims, collapses repeated whitespace, and title-cases each word (including
-// hyphenated parts, e.g. "dela-cruz" -> "Dela-Cruz"). This is a best-effort
-// normalization, not a definitive one — real names have exceptions (van,
-// de la, Mc-prefixes) that a simple rule can't fully cover.
+/**
+ * Sanitizes an internal redirect URL to prevent open redirect vulnerabilities.
+ */
+function sanitizeInternalRedirect(url: string | null): string | null {
+  if (!url) return null;
+  const decoded = decodeURIComponent(url).trim();
+  if (
+    decoded.startsWith("/") &&
+    !decoded.startsWith("//") &&
+    !decoded.includes("://") &&
+    !decoded.includes("\r") &&
+    !decoded.includes("\n")
+  ) {
+    return decoded;
+  }
+  return null;
+}
+
 function normalizeName(input: string): string {
   return input
     .trim()
@@ -81,9 +92,6 @@ function normalizeName(input: string): string {
 
 const EXTENSION_OPTIONS = ["None", "Jr.", "Sr.", "II", "III", "IV", "V"];
 
-// ---------------------------------------------------------------------------
-// Password strength rules
-// ---------------------------------------------------------------------------
 const PASSWORD_RULES: { label: string; test: (pw: string) => boolean }[] = [
   { label: "At least 8 characters", test: (pw) => pw.length >= 8 },
   { label: "One uppercase letter", test: (pw) => /[A-Z]/.test(pw) },
@@ -92,18 +100,9 @@ const PASSWORD_RULES: { label: string; test: (pw: string) => boolean }[] = [
   { label: "One special character", test: (pw) => /[^A-Za-z0-9]/.test(pw) },
 ];
 
-// ---------------------------------------------------------------------------
-// Client-side rate limiting
-// ---------------------------------------------------------------------------
-// This is a UX deterrent, not real security — it lives in localStorage, so
-// it can be bypassed by clearing storage or switching browsers. Genuine
-// abuse protection needs to be enforced server-side (Firebase App Check,
-// a Cloud Function counting attempts per IP, or a Firestore security rule
-// backed by a counter document). Keep this as a friendly speed bump, not
-// your only line of defense.
 const RATE_LIMIT_KEY = "likha_signup_attempts";
 const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 function getRecentAttempts(): number[] {
   try {
@@ -125,7 +124,7 @@ function recordAttempt() {
   try {
     localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(attempts));
   } catch {
-    // localStorage unavailable (private mode, etc.) — fail open, not closed.
+    // localStorage unavailable
   }
 }
 
@@ -135,6 +134,16 @@ function clearAttempts() {
   } catch {
     // ignore
   }
+}
+
+function checkRateLimitExceeded(): { isExceeded: boolean; minutesLeft: number } {
+  const attempts = getRecentAttempts();
+  if (attempts.length >= RATE_LIMIT_MAX) {
+    const oldest = Math.min(...attempts);
+    const minutesLeft = Math.ceil((RATE_LIMIT_WINDOW_MS - (Date.now() - oldest)) / 60000);
+    return { isExceeded: true, minutesLeft };
+  }
+  return { isExceeded: false, minutesLeft: 0 };
 }
 
 function getSignupErrorMessage(err: unknown): string {
@@ -162,17 +171,19 @@ function getSignupErrorMessage(err: unknown): string {
   return "Failed to create account. Please try again.";
 }
 
-export default function Signup() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const typeParam = searchParams.get("type") || searchParams.get("role");
+
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [rateLimited, setRateLimited] = useState(() => {
-    // Guard for SSR: this component renders on the server first (even
-    // with "use client"), and localStorage doesn't exist there.
-    if (typeof window === "undefined") return false;
-    return getRecentAttempts().length >= RATE_LIMIT_MAX;
+  const [accountRole, setAccountRole] = useState<UserRole>(() => {
+    return typeParam === "developer" ? "developer" : "user";
   });
+
   const [formData, setFormData] = useState({
     firstName: "",
     middleName: "",
@@ -181,12 +192,8 @@ export default function Signup() {
     email: "",
     password: "",
     confirmPassword: "",
-    // honeypot — opaque non-autofill field name; bots may fill this, browsers will not
     _likha_hp_check: "",
   });
-
-  // Proactive rate-limit check now happens above, in useState's lazy
-  // initializer — no effect needed for a one-time synchronous read.
 
   const passwordRuleResults = useMemo(
     () =>
@@ -204,31 +211,23 @@ export default function Signup() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Honeypot check: if filled by a scripted bot, silently bail
     if (formData._likha_hp_check && formData._likha_hp_check.trim() !== "") {
       console.warn("Signup blocked: honeypot field was filled.");
       return;
     }
 
-    // Rate limit check
-    const attempts = getRecentAttempts();
-    if (attempts.length >= RATE_LIMIT_MAX) {
-      setRateLimited(true);
-      const oldest = Math.min(...attempts);
-      const minutesLeft = Math.ceil(
-        (RATE_LIMIT_WINDOW_MS - (Date.now() - oldest)) / 60000
-      );
+    const limitCheck = checkRateLimitExceeded();
+    if (limitCheck.isExceeded) {
       notify({
         icon: "warning",
         title: "Too many attempts",
-        text: `You've reached the sign-up limit. Please try again in about ${minutesLeft} minute${
-          minutesLeft === 1 ? "" : "s"
+        text: `You've reached the sign-up limit. Please try again in about ${limitCheck.minutesLeft} minute${
+          limitCheck.minutesLeft === 1 ? "" : "s"
         }.`,
       });
       return;
     }
 
-    // Required-field check
     if (!formData.firstName.trim() || !formData.lastName.trim()) {
       notify({
         icon: "warning",
@@ -238,7 +237,6 @@ export default function Signup() {
       return;
     }
 
-    // Password strength check
     if (!passwordIsStrong) {
       notify({
         icon: "warning",
@@ -251,7 +249,6 @@ export default function Signup() {
       return;
     }
 
-    // Confirm password check
     if (formData.password !== formData.confirmPassword) {
       notify({
         icon: "warning",
@@ -286,7 +283,9 @@ export default function Signup() {
       // 2. Attach a display name to the auth profile
       await updateProfile(user, { displayName: fullName });
 
-      // 3. Save normalized details in Firestore matching firestore.rules
+      // 3. Save normalized profile in Firestore matching firestore.rules
+      const targetRole: UserRole = accountRole === "developer" ? "developer" : "user";
+
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         firstName,
@@ -295,7 +294,7 @@ export default function Signup() {
         extensionName,
         fullName,
         email,
-        role: "developer",
+        role: targetRole,
         createdAt: serverTimestamp(),
       });
 
@@ -304,14 +303,21 @@ export default function Signup() {
 
       clearAttempts();
 
+      const safeNext = sanitizeInternalRedirect(nextParam);
+      const loginUrl = safeNext
+        ? `/login?next=${encodeURIComponent(safeNext)}`
+        : "/login";
+
       await notify({
         icon: "success",
         title: "Account created successfully!",
-        text: "Your developer account is ready. Please log in to continue.",
+        text:
+          targetRole === "developer"
+            ? "Your developer account is ready. Please log in to continue."
+            : "Your account is ready. Please log in to continue.",
       });
 
-      // 4. Redirect to login
-      router.push("/login");
+      router.push(loginUrl);
     } catch (err: unknown) {
       console.error("Signup error:", err);
       notify({
@@ -323,6 +329,317 @@ export default function Signup() {
       setLoading(false);
     }
   };
+
+  const safeNext = sanitizeInternalRedirect(nextParam);
+  const loginLink = safeNext
+    ? `/login?next=${encodeURIComponent(safeNext)}`
+    : "/login";
+
+  return (
+    <div className="signup-card-enter w-full max-w-lg bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)]">
+      <div className="flex flex-col items-center mb-8">
+        <div className="bg-(--ink) p-2.5 rounded-full mb-4">
+          <Rocket className="h-6 w-6 text-(--paper)" />
+        </div>
+        <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-wide text-(--body)/70 mb-2">
+          {accountRole === "developer" ? "Developer Account" : "Marketplace Account"}
+        </span>
+        <h1 className="font-[family-name:var(--font-display)] text-2xl font-medium text-(--ink) tracking-tight">
+          Join Likha Apps
+        </h1>
+        <p className="text-(--body) text-sm mt-2 text-center leading-relaxed">
+          {accountRole === "developer"
+            ? "Create a developer account to submit and publish PWAs in the directory."
+            : "Create an account to rate apps, save your favorites, and write reviews."}
+        </p>
+      </div>
+
+      <form onSubmit={handleSignup} className="space-y-5" noValidate>
+        {/* Honeypot */}
+        <div
+          aria-hidden="true"
+          style={{ display: "none", position: "absolute", left: "-9999px" }}
+        >
+          <label htmlFor="_likha_hp_check">Anti-bot verification</label>
+          <input
+            id="_likha_hp_check"
+            name="_likha_hp_check"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={formData._likha_hp_check}
+            onChange={(e) =>
+              setFormData({ ...formData, _likha_hp_check: e.target.value })
+            }
+          />
+        </div>
+
+        {/* Account Type Selection */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-(--ink)">
+            Account Type
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setAccountRole("user")}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                accountRole === "user"
+                  ? "border-(--ink) bg-(--paper) text-(--ink) ring-1 ring-(--ink)"
+                  : "border-(--line) bg-(--card) text-(--body) hover:border-(--body-dim)"
+              }`}
+            >
+              <div className="font-semibold text-xs text-(--ink) flex items-center gap-1.5 mb-0.5">
+                <User className="w-3.5 h-3.5 text-(--coral)" />
+                <span>Personal / User</span>
+              </div>
+              <p className="text-[11px] text-(--body) leading-tight">
+                Rate apps, save favorites & reviews
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAccountRole("developer")}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                accountRole === "developer"
+                  ? "border-(--ink) bg-(--paper) text-(--ink) ring-1 ring-(--ink)"
+                  : "border-(--line) bg-(--card) text-(--body) hover:border-(--body-dim)"
+              }`}
+            >
+              <div className="font-semibold text-xs text-(--ink) flex items-center gap-1.5 mb-0.5">
+                <Rocket className="w-3.5 h-3.5 text-(--coral)" />
+                <span>Developer</span>
+              </div>
+              <p className="text-[11px] text-(--body) leading-tight">
+                Publish & manage progressive web apps
+              </p>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-(--ink)">
+              First name
+            </label>
+            <Input
+              required
+              placeholder="Juan"
+              className="h-11 border-(--line) focus-visible:ring-(--ink)"
+              value={formData.firstName}
+              onChange={(e) =>
+                setFormData({ ...formData, firstName: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-(--ink)">
+              Last name
+            </label>
+            <Input
+              required
+              placeholder="Dela Cruz"
+              className="h-11 border-(--line) focus-visible:ring-(--ink)"
+              value={formData.lastName}
+              onChange={(e) =>
+                setFormData({ ...formData, lastName: e.target.value })
+              }
+            />
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-[1fr_auto] gap-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-(--ink)">
+              Middle name{" "}
+              <span className="text-(--body) font-normal">(optional)</span>
+            </label>
+            <Input
+              placeholder="Ponce"
+              className="h-11 border-(--line) focus-visible:ring-(--ink)"
+              value={formData.middleName}
+              onChange={(e) =>
+                setFormData({ ...formData, middleName: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-(--ink)">
+              Extension
+            </label>
+            <Select
+              value={formData.extensionName}
+              onValueChange={(value) =>
+                setFormData({ ...formData, extensionName: value as string })
+              }
+            >
+              <SelectTrigger className="h-11 w-full sm:w-28 border-(--line)">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EXTENSION_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {opt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-(--ink)">
+            Email address
+          </label>
+          <Input
+            required
+            type="email"
+            placeholder={accountRole === "developer" ? "developer@example.com" : "user@example.com"}
+            className="h-11 border-(--line) focus-visible:ring-(--ink)"
+            value={formData.email}
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-(--ink)">
+            Password
+          </label>
+          <div className="relative">
+            <Input
+              required
+              type={showPassword ? "text" : "password"}
+              placeholder="Create a strong password"
+              className="h-11 border-(--line) pr-11 focus-visible:ring-(--ink)"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+
+          {formData.password.length > 0 && (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mt-2">
+              {passwordRuleResults.map((rule) => (
+                <li
+                  key={rule.label}
+                  className={`flex items-center gap-1.5 text-xs ${
+                    rule.passed ? "text-emerald-700" : "text-(--body)"
+                  }`}
+                >
+                  {rule.passed ? (
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <X className="w-3.5 h-3.5 shrink-0 opacity-40" />
+                  )}
+                  {rule.label}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-(--ink)">
+            Confirm password
+          </label>
+          <div className="relative">
+            <Input
+              required
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Re-enter your password"
+              className="h-11 border-(--line) pr-11 focus-visible:ring-(--ink)"
+              value={formData.confirmPassword}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  confirmPassword: e.target.value,
+                })
+              }
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-(--body) hover:text-(--ink) transition-colors cursor-pointer"
+              aria-label={
+                showConfirmPassword ? "Hide password" : "Show password"
+              }
+              tabIndex={-1}
+            >
+              {showConfirmPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          {confirmTouched && (
+            <p
+              className={`text-xs flex items-center gap-1.5 mt-1 ${
+                passwordsMatch ? "text-emerald-700" : "text-red-600"
+              }`}
+            >
+              {passwordsMatch ? (
+                <Check className="w-3.5 h-3.5" />
+              ) : (
+                <X className="w-3.5 h-3.5" />
+              )}
+              {passwordsMatch ? "Passwords match" : "Passwords do not match"}
+            </p>
+          )}
+        </div>
+
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full h-12 bg-(--coral) hover:bg-[#e85a3e] text-white text-base font-medium mt-2 cursor-pointer"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating account...
+            </>
+          ) : (
+            "Create account"
+          )}
+        </Button>
+      </form>
+
+      <div className="mt-8 pt-6 border-t border-(--line) text-center">
+        <p className="text-sm text-(--body)">
+          Already have an account?{" "}
+          <a
+            href={loginLink}
+            className="text-(--ink) font-medium hover:underline"
+          >
+            Log in
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function Signup() {
+  const router = useRouter();
 
   return (
     <div
@@ -361,273 +678,22 @@ export default function Signup() {
 
       <button
         onClick={() => router.push("/")}
-        className="fixed top-6 left-6 z-10 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-(--body) transition-colors hover:bg-(--card) hover:text-(--ink)"
+        className="fixed top-6 left-6 z-10 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-(--body) transition-colors hover:bg-(--card) hover:text-(--ink) cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to directory
       </button>
 
       <div className="flex-1 flex flex-col justify-center items-center px-6 py-20">
-        <div className="signup-card-enter w-full max-w-lg bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)]">
-          <div className="flex flex-col items-center mb-8">
-            <div className="bg-(--ink) p-2.5 rounded-full mb-4">
-              <Rocket className="h-6 w-6 text-(--paper)" />
+        <Suspense
+          fallback={
+            <div className="w-full max-w-lg h-96 rounded-xl bg-(--card) border border-(--line) flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-(--body-dim)" />
             </div>
-            <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-wide text-(--body)/70 mb-2">
-              New developer entry
-            </span>
-            <h1 className="font-[family-name:var(--font-display)] text-2xl font-medium text-(--ink) tracking-tight">
-              Join Likha Apps
-            </h1>
-            <p className="text-(--body) text-sm mt-2 text-center leading-relaxed">
-              Create a developer account to submit your PWA to the directory.
-            </p>
-          </div>
-
-          {rateLimited && (
-            <div className="text-sm p-3 rounded-md mb-6 border border-amber-200 bg-amber-50 text-amber-800">
-              Youve hit the sign-up attempt limit for now. Please wait a
-              few minutes before trying again.
-            </div>
-          )}
-
-          <form onSubmit={handleSignup} className="space-y-5" noValidate>
-            {/* Honeypot — hidden from real users, left for bots */}
-            <div
-              aria-hidden="true"
-              style={{ display: "none", position: "absolute", left: "-9999px" }}
-            >
-              <label htmlFor="_likha_hp_check">Anti-bot verification</label>
-              <input
-                id="_likha_hp_check"
-                name="_likha_hp_check"
-                type="text"
-                tabIndex={-1}
-                autoComplete="off"
-                value={formData._likha_hp_check}
-                onChange={(e) =>
-                  setFormData({ ...formData, _likha_hp_check: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-(--ink)">
-                  First name
-                </label>
-                <Input
-                  required
-                  placeholder="Juan"
-                  className="h-11 border-(--line) focus-visible:ring-(--ink)"
-                  value={formData.firstName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, firstName: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-(--ink)">
-                  Last name
-                </label>
-                <Input
-                  required
-                  placeholder="Dela Cruz"
-                  className="h-11 border-(--line) focus-visible:ring-(--ink)"
-                  value={formData.lastName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, lastName: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid sm:grid-cols-[1fr_auto] gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-(--ink)">
-                  Middle name{" "}
-                  <span className="text-(--body) font-normal">(optional)</span>
-                </label>
-                <Input
-                  placeholder="Ponce"
-                  className="h-11 border-(--line) focus-visible:ring-(--ink)"
-                  value={formData.middleName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, middleName: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-(--ink)">
-                  Extension
-                </label>
-                <Select
-                  value={formData.extensionName}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, extensionName: value as string })
-                  }
-                >
-                  <SelectTrigger className="h-11 w-full sm:w-28 border-(--line)">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXTENSION_OPTIONS.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-(--ink)">
-                Email address
-              </label>
-              <Input
-                required
-                type="email"
-                placeholder="developer@example.com"
-                className="h-11 border-(--line) focus-visible:ring-(--ink)"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-(--ink)">
-                Password
-              </label>
-              <div className="relative">
-                <Input
-                  required
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Create a strong password"
-                  className="h-11 border-(--line) pr-11 focus-visible:ring-(--ink)"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--body) hover:text-(--ink) transition-colors"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-
-              {formData.password.length > 0 && (
-                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mt-2">
-                  {passwordRuleResults.map((rule) => (
-                    <li
-                      key={rule.label}
-                      className={`flex items-center gap-1.5 text-xs ${
-                        rule.passed ? "text-emerald-700" : "text-(--body)"
-                      }`}
-                    >
-                      {rule.passed ? (
-                        <Check className="w-3.5 h-3.5 shrink-0" />
-                      ) : (
-                        <X className="w-3.5 h-3.5 shrink-0 opacity-40" />
-                      )}
-                      {rule.label}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-(--ink)">
-                Confirm password
-              </label>
-              <div className="relative">
-                <Input
-                  required
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Re-enter your password"
-                  className="h-11 border-(--line) pr-11 focus-visible:ring-(--ink)"
-                  value={formData.confirmPassword}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      confirmPassword: e.target.value,
-                    })
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--body) hover:text-(--ink) transition-colors"
-                  aria-label={
-                    showConfirmPassword ? "Hide password" : "Show password"
-                  }
-                  tabIndex={-1}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              {confirmTouched && (
-                <p
-                  className={`text-xs flex items-center gap-1.5 mt-1 ${
-                    passwordsMatch ? "text-emerald-700" : "text-red-600"
-                  }`}
-                >
-                  {passwordsMatch ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <X className="w-3.5 h-3.5" />
-                  )}
-                  {passwordsMatch ? "Passwords match" : "Passwords do not match"}
-                </p>
-              )}
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading || rateLimited}
-              className="w-full h-12 bg-(--coral) hover:bg-[#e85a3e] text-white text-base font-medium mt-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating account...
-                </>
-              ) : (
-                "Create account"
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-(--line) text-center">
-            <p className="text-sm text-(--body)">
-              Already have an account?{" "}
-              <a
-                href="/login"
-                className="text-(--ink) font-medium hover:underline"
-              >
-                Log in
-              </a>
-            </p>
-          </div>
-        </div>
+          }
+        >
+          <SignupForm />
+        </Suspense>
       </div>
     </div>
   );

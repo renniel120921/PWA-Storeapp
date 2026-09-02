@@ -30,7 +30,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           lastName: data.lastName || "",
           extensionName: data.extensionName || "",
           fullName: data.fullName || firebaseUser.displayName || "Developer",
-          role: (data.role as UserRole) === "admin" ? "admin" : "developer",
+          role:
+            (data.role as UserRole) === "admin"
+              ? "admin"
+              : (data.role as UserRole) === "developer"
+              ? "developer"
+              : "user",
           avatarUrl: data.avatarUrl || firebaseUser.photoURL || undefined,
           bio: data.bio || undefined,
           website: data.website || undefined,
@@ -50,8 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: firebaseUser.email || "",
       firstName: "",
       lastName: "",
-      fullName: firebaseUser.displayName || "Developer",
-      role: "developer",
+      fullName: firebaseUser.displayName || "User",
+      role: "user",
       avatarUrl: firebaseUser.photoURL || undefined,
       createdAt: null,
     };

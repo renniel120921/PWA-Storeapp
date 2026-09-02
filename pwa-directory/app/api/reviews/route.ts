@@ -145,6 +145,11 @@ export async function POST(request: NextRequest) {
         throw new Error("PWA_NOT_APPROVED");
       }
 
+      // Developer Self-Rating Prevention: Developers may not review their own applications
+      if (pwaData.developerId && pwaData.developerId === uid) {
+        throw new Error("SELF_RATING_FORBIDDEN");
+      }
+
       // B. Check for existing review by this user
       const reviewSnap = await transaction.get(reviewRef);
       const isUpdate = reviewSnap.exists;
@@ -220,6 +225,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "The application could not be found." },
         { status: 404 }
+      );
+    }
+
+    if (errMessage.includes("SELF_RATING_FORBIDDEN")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Marketplace policy does not permit developers to rate or review their own applications.",
+        },
+        { status: 403 }
       );
     }
 

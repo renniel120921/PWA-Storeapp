@@ -17,11 +17,12 @@ import {
   showLoadingAlert,
 } from "@/lib/utils/swal";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Star, User, Lock, Send, Sparkles } from "lucide-react";
+import { MessageSquare, Star, User, Lock, Send, Sparkles, AlertTriangle } from "lucide-react";
 
 interface RatingSectionProps {
   pwaSlug: string;
   appTitle: string;
+  developerId?: string;
   initialAverage: number;
   initialCount: number;
 }
@@ -29,6 +30,7 @@ interface RatingSectionProps {
 export function RatingSection({
   pwaSlug,
   appTitle,
+  developerId,
   initialAverage,
   initialCount,
 }: RatingSectionProps) {
@@ -205,65 +207,79 @@ export function RatingSection({
         {!hasMounted || authLoading ? (
           <div className="h-28 rounded-lg bg-(--ink)/5 animate-pulse" />
         ) : isAuthenticated ? (
-          <form onSubmit={handleSubmitRating} className="space-y-4">
-            <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-(--body-dim) mb-2">
-                {isExistingReview ? "Update Your Rating" : "Rate this application"}
-              </label>
-              <div className="flex items-center gap-3">
-                <StarRating
-                  value={selectedRating}
-                  onChange={(r) => setSelectedRating(r)}
-                  size="lg"
-                />
-                <span className="font-mono text-xs font-medium text-(--ink)">
-                  {selectedRating === 5
-                    ? "5 – Excellent"
-                    : selectedRating === 4
-                    ? "4 – Good"
-                    : selectedRating === 3
-                    ? "3 – Average"
-                    : selectedRating === 2
-                    ? "2 – Poor"
-                    : "1 – Terrible"}
+          developerId && user?.uid === developerId ? (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-xs block mb-0.5">
+                  Developer Account Notice
                 </span>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Marketplace policy does not permit developers to rate or review their own applications.
+                </p>
               </div>
             </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label
-                  htmlFor="review-comment"
-                  className="text-xs font-mono text-(--body) font-medium"
-                >
-                  Written Feedback <span className="text-(--body-dim) font-normal">(Optional)</span>
+          ) : (
+            <form onSubmit={handleSubmitRating} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono uppercase tracking-wider text-(--body-dim) mb-2">
+                  {isExistingReview ? "Update Your Rating" : "Rate this application"}
                 </label>
-                <span className="font-mono text-[11px] text-(--body-dim)">
-                  {comment.length}/1000
-                </span>
+                <div className="flex items-center gap-3">
+                  <StarRating
+                    value={selectedRating}
+                    onChange={(r) => setSelectedRating(r)}
+                    size="lg"
+                  />
+                  <span className="font-mono text-xs font-medium text-(--ink)">
+                    {selectedRating === 5
+                      ? "5 – Excellent"
+                      : selectedRating === 4
+                      ? "4 – Good"
+                      : selectedRating === 3
+                      ? "3 – Average"
+                      : selectedRating === 2
+                      ? "2 – Poor"
+                      : "1 – Terrible"}
+                  </span>
+                </div>
               </div>
-              <textarea
-                id="review-comment"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                maxLength={1000}
-                placeholder="What did you like about this app? What could be improved?"
-                rows={3}
-                className="w-full p-3 rounded-lg border border-(--line) bg-(--card) text-(--ink) placeholder:text-(--body-dim) text-sm outline-none focus:border-(--ink) focus:ring-1 focus:ring-(--ink) transition-colors resize-y"
-              />
-            </div>
 
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="bg-(--coral) hover:bg-[#e85a3e] text-white h-10 px-5 text-xs font-medium rounded-md shadow-none flex items-center gap-2 cursor-pointer transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{isExistingReview ? "Update Rating" : "Submit Rating"}</span>
-              </Button>
-            </div>
-          </form>
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label
+                    htmlFor="review-comment"
+                    className="text-xs font-mono text-(--body) font-medium"
+                  >
+                    Written Feedback <span className="text-(--body-dim) font-normal">(Optional)</span>
+                  </label>
+                  <span className="font-mono text-[11px] text-(--body-dim)">
+                    {comment.length}/1000
+                  </span>
+                </div>
+                <textarea
+                  id="review-comment"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  maxLength={1000}
+                  placeholder="What did you like about this app? What could be improved?"
+                  rows={3}
+                  className="w-full p-3 rounded-lg border border-(--line) bg-(--card) text-(--ink) placeholder:text-(--body-dim) text-sm outline-none focus:border-(--ink) focus:ring-1 focus:ring-(--ink) transition-colors resize-y"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="bg-(--coral) hover:bg-[#e85a3e] text-white h-10 px-5 text-xs font-medium rounded-md shadow-none flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isExistingReview ? "Update Rating" : "Submit Rating"}</span>
+                </Button>
+              </div>
+            </form>
+          )
         ) : (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
             <div className="flex items-center gap-3">
@@ -279,10 +295,10 @@ export function RatingSection({
                 </p>
               </div>
             </div>
-            <Link href="/login">
+            <Link href={`/login?next=${encodeURIComponent(`/apps/${pwaSlug}`)}`}>
               <Button
                 variant="outline"
-                className="border-(--line) bg-(--card) hover:bg-(--ink-soft) text-(--ink) text-xs font-mono h-9 px-4 shrink-0"
+                className="border-(--line) bg-(--card) hover:bg-(--ink-soft) text-(--ink) text-xs font-mono h-9 px-4 shrink-0 cursor-pointer"
               >
                 Log In to Rate
               </Button>
@@ -334,11 +350,25 @@ export function RatingSection({
                   <div className="flex items-center gap-2">
                     <StarRating value={rev.rating} readOnly size="sm" />
                     <span className="text-[11px] font-mono text-(--body-dim)">
-                      {new Date(rev.createdAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                      {rev.createdAt
+                        ? typeof rev.createdAt === "string"
+                          ? new Date(rev.createdAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : typeof rev.createdAt === "object" &&
+                            rev.createdAt !== null &&
+                            "seconds" in rev.createdAt
+                          ? new Date(
+                              (rev.createdAt as { seconds: number }).seconds * 1000
+                            ).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : "Recently"
+                        : "Recently"}
                     </span>
                   </div>
                 </div>

@@ -16,6 +16,7 @@ import {
   Lock,
   Sparkles,
   AlertCircle,
+  Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepIndicator } from "@/components/submission/StepIndicator";
@@ -37,7 +38,7 @@ const WIZARD_STEPS = [
 
 export default function SubmitPage() {
   const router = useRouter();
-  const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, profile, role, isAuthenticated, loading: authLoading } = useAuth();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -395,6 +396,63 @@ export default function SubmitPage() {
                 className="w-full h-11 border-(--line) text-(--ink) bg-transparent hover:bg-(--ink-soft) font-medium text-sm"
               >
                 Create developer account
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Personal User Upgrade Guard Screen
+  // ---------------------------------------------------------------------------
+  if (role === "user") {
+    return (
+      <div
+        className="min-h-screen bg-(--paper) text-(--ink) flex flex-col justify-center items-center px-6 py-20"
+        style={
+          {
+            "--paper": "#F6F4EC",
+            "--card": "#FFFFFF",
+            "--ink": "#122A2C",
+            "--ink-soft": "#EEEAD9",
+            "--body": "#4C5652",
+            "--body-dim": "#7A8480",
+            "--line": "#DBD5C3",
+            "--coral": "#FF6A4D",
+          } as React.CSSProperties
+        }
+      >
+        <div className="w-full max-w-md bg-(--card) rounded-xl border border-(--line) p-8 shadow-[5px_5px_0_0_var(--line)] text-center">
+          <div className="mx-auto w-12 h-12 rounded-full bg-(--coral)/10 flex items-center justify-center mb-6">
+            <Rocket className="w-6 h-6 text-(--coral)" />
+          </div>
+
+          <span className="font-mono text-xs uppercase tracking-wider text-(--body-dim) block mb-2">
+            developer capability required
+          </span>
+
+          <h1 className="font-display text-2xl font-medium text-(--ink) tracking-tight mb-3">
+            Upgrade to Developer
+          </h1>
+
+          <p className="text-sm text-(--body) leading-relaxed mb-8">
+            You are currently signed in with a Personal account. To submit and manage progressive web apps, please upgrade your account in your Account Portal.
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <Link href="/account">
+              <Button className="w-full h-11 bg-(--coral) hover:bg-[#e85a3e] text-white font-medium text-sm cursor-pointer">
+                Go to Account & Upgrade
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button
+                variant="outline"
+                className="w-full h-11 border-(--line) text-(--ink) bg-transparent hover:bg-(--ink-soft) font-medium text-sm cursor-pointer"
+              >
+                Back to Directory
               </Button>
             </Link>
           </div>

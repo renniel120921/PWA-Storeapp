@@ -1,4 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Review } from "@/types";
 
@@ -21,14 +21,16 @@ export interface SubmitRatingResponse {
 export interface ReviewItem {
   id: string;
   pwaId: string;
+  pwaSlug?: string;
+  pwaTitle?: string;
   userId: string;
   userName: string;
   userAvatar?: string | null;
   rating: number;
   comment: string;
   status: string;
-  createdAt: string;
-  updatedAt?: string | null;
+  createdAt: unknown;
+  updatedAt?: unknown;
 }
 
 /**
@@ -102,6 +104,40 @@ export async function getUserPwaReview(
   } catch (error) {
     console.warn("[review.service] getUserPwaReview error:", error);
     return null;
+  }
+}
+
+/**
+ * Fetch all reviews posted by a user.
+ */
+export async function getUserReviews(userId: string): Promise<ReviewItem[]> {
+  if (!userId) return [];
+  try {
+    const revQuery = query(
+      collection(db, "reviews"),
+      where("userId", "==", userId)
+    );
+    const snap = await getDocs(revQuery);
+    return snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        pwaId: data.pwaId || "",
+        pwaSlug: data.pwaSlug || data.pwaId || "",
+        pwaTitle: data.pwaTitle || data.pwaName || "",
+        userId: data.userId || "",
+        userName: data.userName || "",
+        userAvatar: data.userAvatar || null,
+        rating: typeof data.rating === "number" ? data.rating : 0,
+        comment: data.comment || "",
+        status: data.status || "published",
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt || null,
+      } as ReviewItem;
+    });
+  } catch (error) {
+    console.error("[review.service] getUserReviews error:", error);
+    return [];
   }
 }
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getDeveloperDashboardApps,
@@ -38,7 +39,8 @@ import {
 } from "@/lib/utils/swal";
 
 export default function DeveloperMyAppsPage() {
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { user, role, isAuthenticated, loading: authLoading } = useAuth();
 
   const [items, setItems] = useState<DeveloperAppItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,17 @@ export default function DeveloperMyAppsPage() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Enforce developer / admin role guard
+  useEffect(() => {
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        router.push("/login?next=/dashboard/apps");
+      } else if (role === "user") {
+        router.push("/account");
+      }
+    }
+  }, [authLoading, isAuthenticated, role, router]);
 
   // Load Developer Data using deduplicated single-source aggregation
   useEffect(() => {

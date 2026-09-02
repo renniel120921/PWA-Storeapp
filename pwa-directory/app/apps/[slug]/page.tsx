@@ -230,6 +230,7 @@ export default async function AppDetailPage({ params }: AppDetailProps) {
             <RatingSection
               pwaSlug={slug}
               appTitle={pwa.title}
+              developerId={pwa.developerId}
               initialAverage={pwa.ratingAverage || 0}
               initialCount={pwa.ratingCount || 0}
             />

@@ -23,9 +23,23 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
     }
 
+    // Check if the user document in Firestore has the 'developer' role
+    function isDeveloper() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "developer";
+    }
+
+    // Check if the user document in Firestore has either 'developer' or 'admin' role
+    function isDeveloperOrAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["developer", "admin"];
+    }
+
     // Validate allowed user roles
     function isValidUserRole(role) {
-      return role == "developer" || role == "admin";
+      return role == "user" || role == "developer" || role == "admin";
     }
 
     // Validate allowed PWA status values
@@ -40,18 +54,65 @@ service cloud.firestore {
       // User Privacy: Only the owner or an admin may read private profile data
       allow read: if isOwner(userId) || isAdmin();
 
-      // Creation: User can only create their own document with role 'developer'
+      // Creation: Authenticated user can only create their own user document for legitimate registration.
+      // - Must match auth UID.
+      // - Role may ONLY be 'user' or 'developer' (client assignment of 'admin' is strictly blocked).
+      // - Email must be a string.
+      // - Strictly restricts document fields to allowed signup/profile keys using hasOnly().
+      // - Protected fields (isVerified, admin privileges, custom claims, arbitrary fields) are blocked.
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
-        && request.resource.data.role == "developer"
-        && request.resource.data.email is string;
+        && request.resource.data.email is string
+        && (request.resource.data.role == "user" || request.resource.data.role == "developer")
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'firstName',
+          'middleName',
+          'lastName',
+          'extensionName',
+          'fullName',
+          'role',
+          'avatarUrl',
+          'bio',
+          'website',
+          'createdAt',
+          'updatedAt'
+        ]);
 
-      // Update: User can update profile details, but CANNOT modify uid, email, or role
-      allow update: if (isOwner(userId)
+      // Update:
+      // - Admin has full update capability.
+      // - Account Owner can ONLY update explicitly allowed self-editable profile fields:
+      //   [firstName, middleName, lastName, extensionName, fullName, avatarUrl, bio, website, role, updatedAt].
+      // - Protected fields (uid, email, createdAt, isVerified, and future privilege fields) CANNOT be altered.
+      // - Role transition: Exactly one client transition permitted: ONLY "user" -> "developer".
+      // - Setting role to "admin" or demoting "developer" -> "user" on client is strictly blocked.
+      allow update: if isAdmin() || (
+        isOwner(userId)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.email == resource.data.email
-        && request.resource.data.role == resource.data.role)
-        || isAdmin();
+        && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'firstName',
+          'middleName',
+          'lastName',
+          'extensionName',
+          'fullName',
+          'avatarUrl',
+          'bio',
+          'website',
+          'role',
+          'updatedAt'
+        ])
+        && (
+          // Role is unchanged (standard profile field edit)
+          (request.resource.data.role == resource.data.role) ||
+          // Explicit self-service upgrade: ONLY "user" -> "developer"
+          (resource.data.role == "user" && request.resource.data.role == "developer")
+        )
+        // Strictly forbid setting role to admin on client
+        && request.resource.data.role != "admin"
+      );
 
       // Deletion: Admin only
       allow delete: if isAdmin();
@@ -65,7 +126,7 @@ service cloud.firestore {
       // Admins and owning developers can read their own listings regardless of status.
       allow read: if resource.data.status == "approved"
         || isAdmin()
-        || (isAuthenticated() && resource.data.developerId == request.auth.uid);
+        || (isDeveloperOrAdmin() && resource.data.developerId == request.auth.uid);
 
       // Direct client creation is blocked (Only Admin / Server Route Handlers create master PWA docs)
       allow create: if isAdmin();
@@ -73,9 +134,10 @@ service cloud.firestore {
       // Updates:
       // - Admin has full update capability.
       // - Developer can update content metadata on their own approved app,
-      //   but CANNOT change developerId, slug, status, viewsCount, or clicksCount.
+      //   but CANNOT change developerId, slug, status, viewsCount, clicksCount, ratingAverage, or ratingCount.
+      // - Normal 'user' role is strictly rejected from mutating PWA documents.
       allow update: if isAdmin() || (
-        isAuthenticated()
+        isDeveloperOrAdmin()
         && resource.data.developerId == request.auth.uid
         && request.resource.data.developerId == resource.data.developerId
         && request.resource.data.slug == resource.data.slug
@@ -86,9 +148,9 @@ service cloud.firestore {
         && (!('ratingCount' in request.resource.data) || request.resource.data.ratingCount == resource.data.ratingCount)
       );
 
-      // Deletions: Owner or Admin
+      // Deletions: Developer Owner or Admin
       allow delete: if isAdmin() || (
-        isAuthenticated() && resource.data.developerId == request.auth.uid
+        isDeveloperOrAdmin() && resource.data.developerId == request.auth.uid
       );
     }
 
@@ -96,13 +158,13 @@ service cloud.firestore {
     // 3. Submissions Collection (/submissions/{submissionId})
     // =========================================================================
     match /submissions/{submissionId} {
-      // Read: Admin or the submitting developer
+      // Read: Admin or the submitting developer (normal users cannot read submissions)
       allow read: if isAdmin() || (
-        isAuthenticated() && resource.data.developerId == request.auth.uid
+        isDeveloperOrAdmin() && resource.data.developerId == request.auth.uid
       );
 
-      // Create: Authenticated developer creating a 'draft' submission for themselves
-      allow create: if isAuthenticated()
+      // Create: Authenticated developer/admin creating a 'draft' submission for themselves (normal users rejected)
+      allow create: if isDeveloperOrAdmin()
         && request.resource.data.developerId == request.auth.uid
         && request.resource.data.status == "draft";
 
@@ -110,8 +172,9 @@ service cloud.firestore {
       // - Admin can update submissions (for reviews, status changes).
       // - Developer can edit draft submissions or reset rejected submissions back to draft.
       // - Developer CANNOT change developerId or directly set status to 'pending' or 'approved'.
+      // - Normal 'user' role is strictly rejected from modifying submissions.
       allow update: if isAdmin() || (
-        isAuthenticated()
+        isDeveloperOrAdmin()
         && resource.data.developerId == request.auth.uid
         && request.resource.data.developerId == resource.data.developerId
         && (resource.data.status == "draft" || resource.data.status == "rejected")
@@ -120,7 +183,7 @@ service cloud.firestore {
 
       // Delete: Developer can delete own draft submissions; Admin can delete any
       allow delete: if isAdmin() || (
-        isAuthenticated()
+        isDeveloperOrAdmin()
         && resource.data.developerId == request.auth.uid
         && resource.data.status == "draft"
       );
@@ -161,7 +224,10 @@ service cloud.firestore {
 
       allow create: if isAuthenticated()
         && request.resource.data.userId == request.auth.uid
-        && favId == request.auth.uid + "_" + request.resource.data.pwaId;
+        && (
+          (('pwaSlug' in request.resource.data) && favId == request.auth.uid + "_" + request.resource.data.pwaSlug) ||
+          (('pwaId' in request.resource.data) && favId == request.auth.uid + "_" + request.resource.data.pwaId)
+        );
 
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
@@ -203,4 +269,3 @@ service cloud.firestore {
     }
   }
 }
-
